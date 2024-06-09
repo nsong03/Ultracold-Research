@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
-from instrumental.drivers.cameras import uc480
+# from instrumental.drivers.cameras import uc480
 import matplotlib.pyplot as plt
 import math
 from PIL import Image
@@ -27,5 +27,5 @@ from ctypes import *
 from scipy import misc
 from time import sleep
 from scipy.optimize import curve_fit
-from instrumental.drivers.cameras import uc480
+# from instrumental.drivers.cameras import uc480
 

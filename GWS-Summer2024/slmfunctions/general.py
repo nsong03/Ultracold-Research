@@ -717,7 +717,7 @@ def derivephase(virtual_slm, inputbeam, shapephase, initialintensity, n_rep, rad
         ## Here I don't care about the discretization of the phase because we're in real space (that is actually the fourier plane for the code)
         #Generate weights and use them to obtain u
         w=phasetestweights(w,target_im, initialintensity, w_prev,std_int)
-        w = w / np.max(w)
+        w = w / np.max(w) 
         w_prev=w
         u_atomplane=join_phase_ampl(phase_atomplane,w)
         # Back to our fourier plane
