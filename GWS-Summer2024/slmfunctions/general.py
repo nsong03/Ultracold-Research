@@ -647,7 +647,6 @@ def modifiedGWSalgo3tar(n_rep,target1, target2, target3, phase1, phase2, phase3,
 
 
 
-
 def phasetestepsilon(u_int, target_im):
     max = np.max(u_int[target_im != 0]) #Max value of the obtained intensity at the tweezers position
     min = np.min(u_int[target_im != 0]) #Min value of the obtained intensity at the tweezers position

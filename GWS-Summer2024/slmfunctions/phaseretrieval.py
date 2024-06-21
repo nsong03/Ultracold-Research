@@ -20,7 +20,7 @@ from .settings import *
 # updatedimg3 = virtual_slmsimulation(slmabberation, updatedinputphase3)
 
 
-def gen_calibrationpseudodonut(ring_spacing, ring_width, x_offcenteramount, y_offcenteramount):
+def gen_calibrationpseudodonut(blank, ring_spacing, ring_width, x_offcenteramount, y_offcenteramount):
     # Calculate the center coordinates
     xcenter = int(np.shape(blank)[1] / 2) + x_offcenteramount
     ycenter = int(np.shape(blank)[0] / 2) + y_offcenteramount
@@ -41,7 +41,7 @@ def gen_calibrationpseudodonut(ring_spacing, ring_width, x_offcenteramount, y_of
 
     return donut
 
-def gen_slmphaseabberationoval(width, height, oval_intensity, noise_intensity, x_offcenteramount, y_offcenteramount):
+def gen_slmphaseabberationoval(blank, width, height, oval_intensity, noise_intensity, x_offcenteramount, y_offcenteramount):
     # Create a blank numpy array
     noisyoval = np.zeros(np.shape(blank))
     # Calculate the center coordinates
@@ -68,7 +68,7 @@ def gen_slmphaseabberationoval(width, height, oval_intensity, noise_intensity, x
 
     return noisyoval
 
-def gen_slmphaseabberationshapes(width, height, num_shapes, noise_intensity):
+def gen_slmphaseabberationshapes(blank, width, height, num_shapes, noise_intensity):
     # Create a blank numpy array
     noisyscratch = np.zeros(np.shape(blank))
 
@@ -102,7 +102,7 @@ def gen_slmphaseabberationshapes(width, height, num_shapes, noise_intensity):
 
     return noisyscratch
 
-def gen_calibrationrings(numrings, ring_spacing, ring_width, x_offcenteramount, y_offcenteramount):
+def gen_calibrationrings(blank, numrings, ring_spacing, ring_width, x_offcenteramount, y_offcenteramount):
     blank = np.empty((1920*precision,1200*precision),dtype=float)
 
     # Create a blank numpy array
@@ -132,7 +132,7 @@ def gen_calibrationrings(numrings, ring_spacing, ring_width, x_offcenteramount, 
     return blank
 
 
-def gen_calibrationvortex(x_offset, y_offset, p, l, beamwaist, wavelength, fourierlen):
+def gen_calibrationvortex(blank, x_offset, y_offset, p, l, beamwaist, wavelength, fourierlen):
     # x_offset = 200
     # y_offset = 200
     # p = 0;                  # Degree of LG mode
@@ -173,7 +173,7 @@ def gen_calibrationvortex(x_offset, y_offset, p, l, beamwaist, wavelength, fouri
     
     return phase, intensity, U
 
-def create_spiral_phase_plate(turns):
+def create_spiral_phase_plate(blank, turns):
     # Create a blank array
     phase = np.zeros(np.shape(blank))
     width = np.shape(blank)[1]
@@ -195,7 +195,7 @@ def create_spiral_phase_plate(turns):
 
 # blazed_grating_phase = create_blazed_diffraction_grating_phase(wavelength=650, groove_spacing=650/2)
 
-def gen_concentriccircles(powerratio, w, r):
+def gen_concentriccircles(blank, powerratio, w, r):
     array = np.zeros(np.shape(blank))
     width = np.shape(blank)[1]
     height = np.shape(blank)[0]
@@ -223,7 +223,7 @@ def gen_concentriccircles(powerratio, w, r):
     array = array * 2 * np.pi - np.pi
     return array
 
-def opticalvortex(xshift,yshift, topo_charge, focal, k, wavelength):
+def opticalvortex(blank, xshift,yshift, topo_charge, focal, k, wavelength):
     phase = np.zeros(np.shape(blank))
     width = np.shape(blank)[1]
     height = np.shape(blank)[0]
