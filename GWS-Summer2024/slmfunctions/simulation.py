@@ -1,6 +1,10 @@
 from .dependencies import *
 from .settings import *
 
+numpixels = 1300
+slmwidth = 1200
+slmheight = 1920
+
 
 cupyon=True
 
@@ -118,6 +122,7 @@ def sawtoothmake(t, width=1.0):
 
 def makeinitialkvectors(tweezers):
     """Determine the frequencies of input tweezers."""
+    tweezers = tweezers.copy()
     tweezers = tweezers / np.max(tweezers)
     pixel_coordinates = cp.argwhere(tweezers == 1)
     center = cp.array(tweezers.shape) // 2
@@ -173,6 +178,7 @@ def identifyharmonics(kvectors, maxdegree):
     return expanded_kvectors
         
 def frequenciestopixels_harmonicsonly(kvectors, tweezers):
+    tweezers = tweezers.copy()
     maxdegree = kvectors.get_maxdegree()
     center = cp.array(tweezers.shape) // 2
     tweezerlocations = cp.argwhere(tweezers > cp.max(tweezers) / 10)
@@ -206,6 +212,7 @@ def Off_Rand(kvector_mags, kvector_angles, tweezers):
     return offset
 
 def Off_Calc(kvector_mags, kvector_angles, tweezers):
+    tweezers = tweezers.copy()
     numtweezcols = cp.unique(cp.nonzero(tweezers)[0])
     numtweezrows = cp.unique(cp.nonzero(tweezers)[1])
     kx = kvector_mags * cp.cos(radians(kvector_angles))
@@ -401,6 +408,145 @@ def derivephase(costfunction, targetintensity, initialphase, iterations, magnifi
     """All inputs are assumed to be of the same dimensionality, 1300 by 1300. Note that magnification adds on to the target, so
     if target is already 3900 by 3900 magnification of 2 will make the simulation space much(!) larger. Beamtypes available are Gaussian or Constant."""
     # Remember, the calculation region is only numpixels by numpixels
+    targetintensity = targetintensity.copy()
+    targetintensity = targetintensity / cp.max(targetintensity)
+    # Just in case we're using a highly precise target (so not delta function)
+    targetmagnification = cp.shape(targetintensity)[0] // numpixels
+    targetintensity = expand(targetintensity, magnification)
+    magnification = targetmagnification * magnification
+    slmphase = set_circlemask(expand(initialphase, magnification), numpixels *magnification)
+    inputbeam = set_circlemask(createbeam(beamtype, numpixels * magnification, sigma, mu), numpixels * magnification)
+    slmplane = join_phase_ampl(slmphase, inputbeam)
+    
+    weights=cp.ones((numpixels * magnification, numpixels*magnification))
+    weights_previous = targetintensity.copy()
+    
+    # stdinttracker = [] # For use in error calculations
+    tweezerlocation = cp.where(targetintensity == 1)
+    err_maxmindiff = []
+    err_uniformity = []
+    err_powereff = []
+
+    for _ in range(iterations):
+        startingpower = cp.sum(cp.abs(slmplane)**2)
+        fourierplane = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(slmplane), norm="ortho"))
+        fourierintensity = cp.square(cp.abs(fourierplane))
+        stdint = cp.divide(fourierintensity, cp.max(fourierintensity))
+
+        err_maxmindiff.append(Err_MaxMinDiff(stdint, tweezerlocation))
+        err_uniformity.append(Err_Uniformity(stdint, tweezerlocation))
+        err_powereff.append(Err_PowerEff(stdint, tweezerlocation))
+
+        weights = costfunction(weights, weights_previous, targetintensity, stdint, harmonicremoval, badharmonics_pixelcoords)
+        weights_previous = weights.copy()
+        ## This might be a bit confusing, but weights is now the amplitude and we re-combine it with the phase to get the next iteration
+        fourierangle = cp.angle(fourierplane)
+        fourierplane = join_phase_ampl(fourierangle, weights)
+        slmplane = cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(fourierplane), norm="ortho"))     
+        endingpower = cp.sum(cp.abs(slmplane)**2)
+        slmplane = cp.multiply(cp.divide(slmplane, endingpower), startingpower)
+        slmplane_numpixels = slmplane.copy()
+        slmplane_numpixels = cp.mean(slmplane_numpixels.reshape(numpixels, magnification, numpixels, magnification), axis=(-3,-1))
+        
+        slmphase = undiscretize_phase(discretize_phase(set_circlemask(cp.angle(slmplane_numpixels), numpixels)))
+        readout_slmphase = slmphase.copy()
+        slmplane = join_phase_ampl(expand(slmphase, magnification), inputbeam)
+    
+    errors = [err_maxmindiff, err_uniformity, err_powereff]
+    labels = ["MaxMinDiff","Uniformity", "Power Efficiency"]
+
+    readout = OptimizedOutput()
+    readout.set_all(readout_slmphase, stdint, errors, labels)
+    
+    return readout
+
+def derivephase_fixed(costfunction, targetintensity, initialphase, iterations1, iterations2, magnification = 1, harmonicremoval = False, badharmonics_pixelcoords=[], beamtype="Constant", sigma=1, mu = 1):
+    """All inputs are assumed to be of the same dimensionality, 1300 by 1300. Note that magnification adds on to the target, so
+    if target is already 3900 by 3900 magnification of 2 will make the simulation space much(!) larger. Beamtypes available are Gaussian or Constant."""
+    # Remember, the calculation region is only numpixels by numpixels
+    targetintensity = targetintensity.copy()
+    targetintensity = targetintensity / cp.max(targetintensity)
+    # Just in case we're using a highly precise target (so not delta function)
+    targetmagnification = cp.shape(targetintensity)[0] // numpixels
+    targetintensity = expand(targetintensity, magnification)
+    magnification = targetmagnification * magnification
+    slmphase = set_circlemask(expand(initialphase, magnification), numpixels *magnification)
+    inputbeam = set_circlemask(createbeam(beamtype, numpixels * magnification, sigma, mu), numpixels * magnification)
+    slmplane = join_phase_ampl(slmphase, inputbeam)
+    
+    weights=cp.ones((numpixels * magnification, numpixels*magnification))
+    weights_previous = targetintensity.copy()
+    
+    # stdinttracker = [] # For use in error calculations
+    tweezerlocation = cp.where(targetintensity == 1)
+    err_maxmindiff = []
+    err_uniformity = []
+    err_powereff = []
+
+    for _ in range(iterations1):
+        startingpower = cp.sum(cp.abs(slmplane)**2)
+        fourierplane = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(slmplane), norm="ortho"))
+        fourierintensity = cp.square(cp.abs(fourierplane))
+        stdint = cp.divide(fourierintensity, cp.max(fourierintensity))
+        # stdint = fourierintensity
+
+        err_maxmindiff.append(Err_MaxMinDiff(stdint, tweezerlocation))
+        err_uniformity.append(Err_Uniformity(stdint, tweezerlocation))
+        err_powereff.append(Err_PowerEff(stdint, tweezerlocation))
+
+        weights = costfunction(weights, weights_previous, targetintensity, stdint, harmonicremoval, badharmonics_pixelcoords)
+        weights_previous = weights.copy()
+        ## This might be a bit confusing, but weights is now the amplitude and we re-combine it with the phase to get the next iteration
+        fourierangle = cp.angle(fourierplane)
+        fourierplane = join_phase_ampl(fourierangle, weights)
+        slmplane = cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(fourierplane), norm="ortho"))     
+        endingpower = cp.sum(cp.abs(slmplane)**2)
+        slmplane = cp.multiply(cp.divide(slmplane, endingpower), startingpower)
+        slmplane_numpixels = slmplane.copy()
+        slmplane_numpixels = cp.mean(slmplane_numpixels.reshape(numpixels, magnification, numpixels, magnification), axis=(-3,-1))
+        
+        slmphase = undiscretize_phase(discretize_phase(set_circlemask(cp.angle(slmplane_numpixels), numpixels)))
+        readout_slmphase = slmphase.copy()
+        slmplane = join_phase_ampl(expand(slmphase, magnification), inputbeam)
+    
+    for _ in range(iterations2):
+        startingpower = cp.sum(cp.abs(slmplane)**2)
+        fourierplane = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(slmplane), norm="ortho"))
+        fourierintensity = cp.square(cp.abs(fourierplane))
+        stdint = cp.divide(fourierintensity, cp.max(fourierintensity))
+        # stdint = fourierintensity
+
+        err_maxmindiff.append(Err_MaxMinDiff(stdint, tweezerlocation))
+        err_uniformity.append(Err_Uniformity(stdint, tweezerlocation))
+        err_powereff.append(Err_PowerEff(stdint, tweezerlocation))
+
+        weights = costfunction(weights, weights_previous, targetintensity, stdint, harmonicremoval, badharmonics_pixelcoords)
+        weights_previous = weights.copy()
+        ## This might be a bit confusing, but weights is now the amplitude and we re-combine it with the phase to get the next iteration
+        # fourierangle = cp.angle(fourierplane)
+        fourierplane = join_phase_ampl(fourierangle, weights)
+        slmplane = cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(fourierplane), norm="ortho"))     
+        endingpower = cp.sum(cp.abs(slmplane)**2)
+        slmplane = cp.multiply(cp.divide(slmplane, endingpower), startingpower)
+        slmplane_numpixels = slmplane.copy()
+        slmplane_numpixels = cp.mean(slmplane_numpixels.reshape(numpixels, magnification, numpixels, magnification), axis=(-3,-1))
+        
+        slmphase = undiscretize_phase(discretize_phase(set_circlemask(cp.angle(slmplane_numpixels), numpixels)))
+        readout_slmphase = slmphase.copy()
+        slmplane = join_phase_ampl(expand(slmphase, magnification), inputbeam)
+    errors = [err_maxmindiff, err_uniformity, err_powereff]
+    labels = ["MaxMinDiff","Uniformity", "Power Efficiency"]
+
+    readout = OptimizedOutput()
+    readout.set_all(readout_slmphase, stdint, errors, labels)
+    
+    return readout
+
+def camerafeedback_intensityuniformity(feedbackpencost, inputphase, target_im, slmobject, cameraobject):
+    """All inputs are assumed to be of the same dimensionality, 1300 by 1300. Note that magnification adds on to the target, so
+    if target is already 3900 by 3900 magnification of 2 will make the simulation space much(!) larger. Beamtypes available are Gaussian or Constant."""
+    # Remember, the calculation region is only numpixels by numpixels
+    targetintensity = targetintensity.copy()
     targetintensity = targetintensity / cp.max(targetintensity)
     # Just in case we're using a highly precise target (so not delta function)
     targetmagnification = cp.shape(targetintensity)[0] // numpixels
@@ -451,7 +597,7 @@ def derivephase(costfunction, targetintensity, initialphase, iterations, magnifi
     readout.set_all(readout_slmphase, stdint, errors, labels)
     
     return readout
-    
+
 def simulatefourier(tweezerphase, magnification=3, beamtype="Constant", sigma=1, mu=1):
     numpixels = cp.shape(tweezerphase)[0]
     slmphase = set_circlemask(expand(tweezerphase, magnification), numpixels *magnification)
@@ -493,28 +639,42 @@ def createbeam(beamtype, size, sigma=1, mu = 1):
 ### Cost functions
 
 def Pen_DeltaSqrt(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoords=[]):
+    threshold = cp.mean(target_im) * 100
     if harmonicremoval:
-        w[target_im!=0] = cp.sqrt((target_im[target_im!=0] / std_int[target_im!=0])) * w_prev[target_im!=0]
+        w[target_im>threshold] = cp.sqrt((target_im[target_im>threshold] / std_int[target_im>threshold])) * w_prev[target_im>threshold]
         w[harmoniccoords] = 0
     else:
-        w[target_im!=0] = cp.sqrt((target_im[target_im!=0] / std_int[target_im!=0])) * w_prev[target_im!=0]
+        w[target_im>threshold] = cp.sqrt((target_im[target_im>threshold] / std_int[target_im>threshold])) * w_prev[target_im>threshold]
     return (w)
 
-def Pen_Sqrt(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoords=[]):
+def Pen_Lukin(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoords=[]):
+    threshold = cp.mean(target_im)
     if harmonicremoval:
-        w[target_im!=0] = cp.sqrt((target_im[target_im!=0] / std_int[target_im!=0])) * w_prev[target_im!=0]
+        w[target_im>threshold] = cp.sqrt((cp.mean(std_int[target_im>threshold]) / std_int[target_im>threshold])) * w_prev[target_im>threshold]
         w[harmoniccoords] = 0
     else:
-        w[target_im!=0] = cp.sqrt((target_im[target_im!=0] / std_int[target_im!=0])) * w_prev[target_im!=0]
+        w[target_im>threshold] = cp.sqrt((cp.mean(std_int[target_im>threshold]) / std_int[target_im>threshold])) * w_prev[target_im>threshold]
+    return (w)
+
+
+def Pen_Sqrt(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoords=[]):
+    threshold = cp.mean(target_im)
+    if harmonicremoval:
+        w[target_im>threshold] = cp.sqrt((target_im[target_im>threshold] / std_int[target_im>threshold])) * w_prev[target_im>threshold]
+        w[harmoniccoords] = 0
+    else:
+        w[target_im>threshold] = cp.sqrt((target_im[target_im>threshold] / std_int[target_im>threshold])) * w_prev[target_im>threshold]
     return (w)
 
 def Pen_Exp(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoords=[]):
+    threshold = cp.mean(target_im)
     if harmonicremoval:
-        w[target_im!=0] = cp.power(target_im[target_im!=0] / std_int[target_im!=0],3) * w_prev[target_im!=0]
+        w[target_im>threshold] = cp.power(target_im[target_im>threshold] / std_int[target_im>threshold],3) * w_prev[target_im>threshold]
         w[harmoniccoords] = 0
     else:
-        w[target_im!=0] = cp.power(target_im[target_im!=0] / std_int[target_im!=0],3) * w_prev[target_im!=0]
+        w[target_im>threshold] = cp.power(target_im[target_im>threshold] / std_int[target_im>threshold],3) * w_prev[target_im>threshold]
     return (w)
+
 
 # (Experimental) some more cost functions
 def weights(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoords=[]): # This weight function works only where the intensity == 1 (discrete tweezers)
@@ -546,21 +706,16 @@ def Err_MaxMinDiff(stdints, coordinates):
 
     return errors
 
-def Err_Uniformity(stdints, tweezers):
-    stdints = cp.copy(stdints)
-    tweezers = cp.copy(tweezers)
-    target_im = tweezers / cp.max(tweezers)
-    tweezerloc = cp.argwhere(target_im !=0)
-    # for stdint in stdints:
-    #     errors.append(cp.std(stdint[tweezerloc]))
-    # errors = []
-    # errors.append(cp.std(stdints[tweezerloc]))
+def Err_Uniformity(stdints, coordinates):
+    # stdints = cp.copy(stdints)
+    # errors = cp.std(stdints[coordinates].flatten())
 
-    evalvalues = stdints[tuple(tweezerloc.T)]
-    # Compute the standard deviation of the extracted pixel values
-    std_dev = cp.std(evalvalues)
-    
-    return std_dev
+    stdints = cp.copy(stdints)
+    max = cp.max(stdints[coordinates]) #Max value of the obtained intensity at the tweezers position
+    min = cp.min(stdints[coordinates]) #Min value of the obtained intensity at the tweezers position
+    errors = (max-min)/cp.mean(stdints[coordinates])
+
+    return errors
 
 def Err_PowerEff(stdints, coordinates, n = 1):
     # expanded_coords = set()
@@ -617,6 +772,12 @@ def zoomin_getcoords(array):
         min_y = min_x = max_y = max_x = None
     
     return [min_y-20,max_y+20, min_x-20,max_x+20]
+
+def removenoise(array, cutoff=1.5):
+    array = array.copy()
+    threshold = cp.mean(array)*cutoff
+    array[array<threshold]  = 0
+    return array
 
 def expand(array, multiplier=3):
     """ expands array based on multiplier for use in GWS algorithm or fourier imaging"""
@@ -714,6 +875,25 @@ def rotate_2d_array(arr, theta, order=1):
     return rotated_arr
 
 # Visualization
+
+def print_blob_coordinates(blobs):
+    """
+    Print the coordinates of all detected blobs.
+
+    Parameters
+    ----------
+    blobs : tuple
+        A tuple containing the list of KeyPoints and the SimpleBlobDetector object.
+    """
+    # Extract the list of KeyPoints from the blobs tuple
+    keypoints = blobs[0]
+
+    print("Coordinates of detected blobs:")
+    for i, blob in enumerate(keypoints):
+        print(f"Blob {i}: x = {blob.pt[0]}, y = {blob.pt[1]}")
+        
+
+        
 def create_3d_bar_plot(data, title='Tweezer Intensities', xlabel='X-axis', ylabel='Y-axis', zlabel='Intensity'):
     """
     Creates a 3D bar plot from a 2D array of intensity values.
@@ -866,3 +1046,13 @@ def zeropad(inputarray, padding):
     simplegrating = cp.zeros((ysize+padding, xsize+padding))
     simplegrating[padding//2: ysize + padding // 2, padding//2: xsize + padding // 2] = inputarray
     return simplegrating
+
+
+
+
+
+
+
+
+
+
