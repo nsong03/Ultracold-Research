@@ -346,7 +346,7 @@ def create_phasemap(kvectors, offsets, wavetype=makesawtooth, opton=False, optty
 
 # Tweezer generation
 
-def createtweezers_grid(blankinput, spacing, xnum, ynum):
+def createtweezers_grid(blankinput, spacing, xnum, ynum, xoffset=100):
     """Creates delta function at tweezer locations. blankinput is a blank input array to 
     initialize tweezer in, spacing is the pixel spacing between tweezers, and xnum and ynum are the 
     number of tweezers in the respective directions. Auto-centered and created."""
@@ -354,7 +354,7 @@ def createtweezers_grid(blankinput, spacing, xnum, ynum):
     ysize = cp.shape(blankinput)[0]
     xsize = cp.shape(blankinput)[1]
 
-    for i in range(xsize // 2 + xsize // 10, xsize // 2 + xsize // 10+ spacing*xnum ):
+    for i in range(xsize // 2 + xoffset, xsize // 2 +xoffset+ spacing*xnum ):
         for j in range(ysize//2 - spacing * ynum // 2 ,ysize // 2 + spacing*ynum // 2):
             pixcoord = 0
             distj1 = j  % spacing
@@ -403,6 +403,27 @@ def createarbitrarytweezer(blankinput, tweezer, xoffset, yoffset):
     simplegrating[ysize//2 - tweezer_ysize//2+ yoffset:ysize//2 +tweezer_ysize//2 +yoffset, xsize//2 - tweezer_xsize//2+ xoffset:xsize//2 +tweezer_xsize//2 +xoffset] = tweezer
     return simplegrating
 
+def applydiffractionlimited(tweezerarray, fourierplanesize, slmpixelsize, wavelength, focallength):
+    weightedtweezers = tweezerarray.copy()
+    height, width = cp.shape(tweezerarray)
+    y = cp.linspace(-height // 2, height // 2, height)
+    x = cp.linspace(-width // 2, width // 2, width)
+    xv, yv = cp.meshgrid(x, y)
+
+    # Calculate the absolute distances from the center
+    x_abs = cp.abs(xv)
+    y_abs = cp.abs(yv)
+
+    # Calculate the weighting function
+    pi = cp.pi
+    sinc_x = cp.sinc(pi * slmpixelsize * x_abs * fourierplanesize / (2 * wavelength * focallength))
+    sinc_y = cp.sinc(pi * slmpixelsize  * y_abs * fourierplanesize / (2 * wavelength * focallength))
+
+    # Create the intensity array
+    intensity_array = 1/(sinc_x * sinc_y)
+    weightedtweezers = intensity_array * tweezerarray
+
+    return weightedtweezers, intensity_array
 
 def derivephase(costfunction, targetintensity, initialphase, iterations, magnification = 1, harmonicremoval = False, badharmonics_pixelcoords=[], beamtype="Constant", sigma=1, mu = 1):
     """All inputs are assumed to be of the same dimensionality, 1300 by 1300. Note that magnification adds on to the target, so
@@ -509,6 +530,10 @@ def derivephase_fixed(costfunction, targetintensity, initialphase, iterations1, 
         readout_slmphase = slmphase.copy()
         slmplane = join_phase_ampl(expand(slmphase, magnification), inputbeam)
     
+    weightsnew = cp.ones((numpixels * magnification, numpixels*magnification))
+    weightsnew[weights > 0] = weights[weights>0]
+    weights_previous = weightsnew
+
     for _ in range(iterations2):
         startingpower = cp.sum(cp.abs(slmplane)**2)
         fourierplane = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(slmplane), norm="ortho"))
@@ -534,6 +559,62 @@ def derivephase_fixed(costfunction, targetintensity, initialphase, iterations1, 
         slmphase = undiscretize_phase(discretize_phase(set_circlemask(cp.angle(slmplane_numpixels), numpixels)))
         readout_slmphase = slmphase.copy()
         slmplane = join_phase_ampl(expand(slmphase, magnification), inputbeam)
+    errors = [err_maxmindiff, err_uniformity, err_powereff]
+    labels = ["MaxMinDiff","Uniformity", "Power Efficiency"]
+
+    readout = OptimizedOutput()
+    readout.set_all(readout_slmphase, stdint, errors, labels)
+    
+    return readout
+
+def camerafeedback_intensityuniformity(feedbackpencost, inputphase, target_im, slmobject, cameraobject):
+    """All inputs are assumed to be of the same dimensionality, 1300 by 1300. Note that magnification adds on to the target, so
+    if target is already 3900 by 3900 magnification of 2 will make the simulation space much(!) larger. Beamtypes available are Gaussian or Constant."""
+    # Remember, the calculation region is only numpixels by numpixels
+    targetintensity = targetintensity.copy()
+    targetintensity = targetintensity / cp.max(targetintensity)
+    # Just in case we're using a highly precise target (so not delta function)
+    targetmagnification = cp.shape(targetintensity)[0] // numpixels
+    targetintensity = expand(targetintensity, magnification)
+    magnification = targetmagnification * magnification
+    slmphase = set_circlemask(expand(initialphase, magnification), numpixels *magnification)
+    inputbeam = set_circlemask(createbeam(beamtype, numpixels * magnification, sigma, mu), numpixels * magnification)
+    slmplane = join_phase_ampl(slmphase, inputbeam)
+    
+    weights=cp.zeros((numpixels * magnification, numpixels*magnification))
+    weights_previous = targetintensity.copy()
+    
+    # stdinttracker = [] # For use in error calculations
+    tweezerlocation = cp.where(targetintensity == 1)
+    err_maxmindiff = []
+    err_uniformity = []
+    err_powereff = []
+
+    for _ in range(iterations):
+        startingpower = cp.sum(cp.abs(slmplane)**2)
+        fourierplane = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(slmplane), norm="ortho"))
+        fourierintensity = cp.square(cp.abs(fourierplane))
+        stdint = cp.divide(fourierintensity, cp.max(fourierintensity))
+
+        err_maxmindiff.append(Err_MaxMinDiff(stdint, tweezerlocation))
+        err_uniformity.append(Err_Uniformity(stdint, targetintensity))
+        err_powereff.append(Err_PowerEff(stdint, tweezerlocation))
+
+        weights = costfunction(weights, weights_previous, targetintensity, stdint, harmonicremoval, badharmonics_pixelcoords)
+        weights_previous = weights.copy()
+        ## This might be a bit confusing, but weights is now the amplitude and we re-combine it with the phase to get the next iteration
+        fourierangle = cp.angle(fourierplane)
+        fourierplane = join_phase_ampl(fourierangle, weights)
+        slmplane = cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(fourierplane), norm="ortho"))     
+        endingpower = cp.sum(cp.abs(slmplane)**2)
+        slmplane = cp.multiply(cp.divide(slmplane, endingpower), startingpower)
+        slmplane_numpixels = slmplane.copy()
+        slmplane_numpixels = cp.mean(slmplane_numpixels.reshape(numpixels, magnification, numpixels, magnification), axis=(-3,-1))
+        
+        slmphase = undiscretize_phase(discretize_phase(set_circlemask(cp.angle(slmplane_numpixels), numpixels)))
+        readout_slmphase = slmphase.copy()
+        slmplane = join_phase_ampl(expand(slmphase, magnification), inputbeam)
+    
     errors = [err_maxmindiff, err_uniformity, err_powereff]
     labels = ["MaxMinDiff","Uniformity", "Power Efficiency"]
 
@@ -646,7 +727,7 @@ def Err_MaxMinDiff(stdints, coordinates):
     
     # errors = []
     # errors.append((max-min)/(max+min))
-    errors = (max-min)/(max+min)
+    errors = cp.abs((max-min)/(max+min))
 
     return errors
 
@@ -659,7 +740,7 @@ def Err_Uniformity(stdints, coordinates):
     min = cp.min(stdints[coordinates]) #Min value of the obtained intensity at the tweezers position
     errors = (max-min)/cp.mean(stdints[coordinates])
 
-    return errors
+    return cp.abs(errors)
 
 def Err_PowerEff(stdints, coordinates, n = 1):
     # expanded_coords = set()
