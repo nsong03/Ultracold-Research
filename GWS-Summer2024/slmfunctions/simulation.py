@@ -403,7 +403,27 @@ def createarbitrarytweezer(blankinput, tweezer, xoffset, yoffset):
     simplegrating[ysize//2 - tweezer_ysize//2+ yoffset:ysize//2 +tweezer_ysize//2 +yoffset, xsize//2 - tweezer_xsize//2+ xoffset:xsize//2 +tweezer_xsize//2 +xoffset] = tweezer
     return simplegrating
 
-def applydiffractionlimited(tweezer, )
+def applydiffractionlimited(tweezerarray, fourierplanesize, slmpixelsize, wavelength, focallength):
+    weightedtweezers = tweezerarray.copy()
+    height, width = cp.shape(tweezerarray)
+    y = cp.linspace(-height // 2, height // 2, height)
+    x = cp.linspace(-width // 2, width // 2, width)
+    xv, yv = cp.meshgrid(x, y)
+
+    # Calculate the absolute distances from the center
+    x_abs = cp.abs(xv)
+    y_abs = cp.abs(yv)
+
+    # Calculate the weighting function
+    pi = cp.pi
+    sinc_x = cp.sinc(pi * slmpixelsize * x_abs * fourierplanesize / (2 * wavelength * focallength))
+    sinc_y = cp.sinc(pi * slmpixelsize  * y_abs * fourierplanesize / (2 * wavelength * focallength))
+
+    # Create the intensity array
+    intensity_array = 1/(sinc_x * sinc_y)
+    weightedtweezers = intensity_array * tweezerarray
+
+    return weightedtweezers, intensity_array
 
 def derivephase(costfunction, targetintensity, initialphase, iterations, magnification = 1, harmonicremoval = False, badharmonics_pixelcoords=[], beamtype="Constant", sigma=1, mu = 1):
     """All inputs are assumed to be of the same dimensionality, 1300 by 1300. Note that magnification adds on to the target, so
@@ -419,7 +439,7 @@ def derivephase(costfunction, targetintensity, initialphase, iterations, magnifi
     inputbeam = set_circlemask(createbeam(beamtype, numpixels * magnification, sigma, mu), numpixels * magnification)
     slmplane = join_phase_ampl(slmphase, inputbeam)
     
-    weights=cp.ones((numpixels * magnification, numpixels*magnification))
+    weights=cp.zeros((numpixels * magnification, numpixels*magnification))
     weights_previous = targetintensity.copy()
     
     # stdinttracker = [] # For use in error calculations
@@ -475,7 +495,7 @@ def derivephase_fixed(costfunction, targetintensity, initialphase, iterations1, 
     inputbeam = set_circlemask(createbeam(beamtype, numpixels * magnification, sigma, mu), numpixels * magnification)
     slmplane = join_phase_ampl(slmphase, inputbeam)
     
-    weights=cp.ones((numpixels * magnification, numpixels*magnification))
+    weights=cp.zeros((numpixels * magnification, numpixels*magnification))
     weights_previous = targetintensity.copy()
     
     # stdinttracker = [] # For use in error calculations
@@ -557,7 +577,7 @@ def camerafeedback_intensityuniformity(feedbackpencost, inputphase, target_im, s
     inputbeam = set_circlemask(createbeam(beamtype, numpixels * magnification, sigma, mu), numpixels * magnification)
     slmplane = join_phase_ampl(slmphase, inputbeam)
     
-    weights=cp.ones((numpixels * magnification, numpixels*magnification))
+    weights=cp.zeros((numpixels * magnification, numpixels*magnification))
     weights_previous = targetintensity.copy()
     
     # stdinttracker = [] # For use in error calculations
