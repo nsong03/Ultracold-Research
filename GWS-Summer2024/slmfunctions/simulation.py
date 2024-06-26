@@ -403,6 +403,7 @@ def createarbitrarytweezer(blankinput, tweezer, xoffset, yoffset):
     simplegrating[ysize//2 - tweezer_ysize//2+ yoffset:ysize//2 +tweezer_ysize//2 +yoffset, xsize//2 - tweezer_xsize//2+ xoffset:xsize//2 +tweezer_xsize//2 +xoffset] = tweezer
     return simplegrating
 
+def applydiffractionlimited(tweezer, )
 
 def derivephase(costfunction, targetintensity, initialphase, iterations, magnification = 1, harmonicremoval = False, badharmonics_pixelcoords=[], beamtype="Constant", sigma=1, mu = 1):
     """All inputs are assumed to be of the same dimensionality, 1300 by 1300. Note that magnification adds on to the target, so
