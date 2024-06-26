@@ -346,7 +346,7 @@ def create_phasemap(kvectors, offsets, wavetype=makesawtooth, opton=False, optty
 
 # Tweezer generation
 
-def createtweezers_grid(blankinput, spacing, xnum, ynum):
+def createtweezers_grid(blankinput, spacing, xnum, ynum, xoffset=100):
     """Creates delta function at tweezer locations. blankinput is a blank input array to 
     initialize tweezer in, spacing is the pixel spacing between tweezers, and xnum and ynum are the 
     number of tweezers in the respective directions. Auto-centered and created."""
@@ -354,7 +354,7 @@ def createtweezers_grid(blankinput, spacing, xnum, ynum):
     ysize = cp.shape(blankinput)[0]
     xsize = cp.shape(blankinput)[1]
 
-    for i in range(xsize // 2 + xsize // 10, xsize // 2 + xsize // 10+ spacing*xnum ):
+    for i in range(xsize // 2 + xoffset, xsize // 2 +xoffset+ spacing*xnum ):
         for j in range(ysize//2 - spacing * ynum // 2 ,ysize // 2 + spacing*ynum // 2):
             pixcoord = 0
             distj1 = j  % spacing
@@ -530,6 +530,10 @@ def derivephase_fixed(costfunction, targetintensity, initialphase, iterations1, 
         readout_slmphase = slmphase.copy()
         slmplane = join_phase_ampl(expand(slmphase, magnification), inputbeam)
     
+    weightsnew = cp.ones((numpixels * magnification, numpixels*magnification))
+    weightsnew[weights > 0] = weights[weights>0]
+    weights_previous = weightsnew
+
     for _ in range(iterations2):
         startingpower = cp.sum(cp.abs(slmplane)**2)
         fourierplane = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(slmplane), norm="ortho"))
@@ -723,7 +727,7 @@ def Err_MaxMinDiff(stdints, coordinates):
     
     # errors = []
     # errors.append((max-min)/(max+min))
-    errors = (max-min)/(max+min)
+    errors = cp.abs((max-min)/(max+min))
 
     return errors
 
@@ -736,7 +740,7 @@ def Err_Uniformity(stdints, coordinates):
     min = cp.min(stdints[coordinates]) #Min value of the obtained intensity at the tweezers position
     errors = (max-min)/cp.mean(stdints[coordinates])
 
-    return errors
+    return cp.abs(errors)
 
 def Err_PowerEff(stdints, coordinates, n = 1):
     # expanded_coords = set()
