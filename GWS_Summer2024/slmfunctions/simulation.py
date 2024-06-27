@@ -394,6 +394,30 @@ def createtweezers_centered(blankinput, spacing, xnum, ynum):
             simplegrating[j,i] = pixcoord
     return simplegrating
 
+def createtweezers_withoutcenter(blankinput, spacing, xnum, ynum, centerwidth = 200, centerheight = 200):
+    """Creates Nx by Ny tweezers with the center pixels removed."""
+    simplegrating = cp.zeros(cp.shape(blankinput))
+    ysize = cp.shape(blankinput)[0]
+    xsize = cp.shape(blankinput)[1]
+
+    for i in range(xsize // 2- spacing*xnum // 2 , xsize // 2 + spacing*xnum // 2 ):
+        for j in range(ysize//2 - spacing * ynum // 2 ,ysize // 2 + spacing*ynum // 2):
+            pixcoord = 0
+            distj1 = j  % spacing
+            disti1 = i  % spacing
+            distj2 = (spacing - j) % spacing
+            disti2 = (spacing - i) % spacing
+            distj = min((distj1, distj2))
+            disti = min((disti1, disti2))
+            xrad = 1
+            yrad = 1
+            if (distj < xrad) and (disti < yrad):
+                pixcoord = 255
+            simplegrating[j,i] = pixcoord
+
+    simplegrating[ysize // 2 - centerheight // 2: ysize // 2 + centerheight // 2, xsize // 2 - centerwidth // 2: xsize // 2 + centerwidth // 2] = 0
+    return simplegrating
+
 def createarbitrarytweezer(blankinput, tweezer, xoffset, yoffset):
     tweezer_ysize = cp.shape(tweezer)[0]
     tweezer_xsize = cp.shape(tweezer)[1]
@@ -530,7 +554,7 @@ def derivephase_fixed(costfunction, targetintensity, initialphase, iterations1, 
         readout_slmphase = slmphase.copy()
         slmplane = join_phase_ampl(expand(slmphase, magnification), inputbeam)
     
-    weightsnew = cp.ones((numpixels * magnification, numpixels*magnification))
+    weightsnew = cp.ones((numpixels * magnification, numpixels*magnification)) / 2
     weightsnew[weights > 0] = weights[weights>0]
     weights_previous = weightsnew
 
