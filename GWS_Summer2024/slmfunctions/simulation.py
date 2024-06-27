@@ -695,7 +695,7 @@ def Pen_DeltaSqrt(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoo
         w[target_im>threshold] = cp.sqrt((target_im[target_im>threshold] / std_int[target_im>threshold])) * w_prev[target_im>threshold]
         w[harmoniccoords] = 0
     else:
-        w[target_im>threshold] = target_im[target_im>threshold] * cp.sqrt((cp.mean(std_int[target_im>threshold]) / std_int[target_im>threshold])) #* w_prev[target_im>threshold]
+        w[target_im>threshold] = target_im[target_im>threshold] * cp.sqrt((cp.mean(std_int[target_im>threshold]) / std_int[target_im>threshold])) * w_prev[target_im>threshold]
     return (w)
 
 def Pen_Lukin(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoords=[]):
