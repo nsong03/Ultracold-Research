@@ -429,6 +429,7 @@ def createarbitrarytweezer(blankinput, tweezer, xoffset, yoffset):
 
 def applydiffractionlimited(tweezerarray, fourierplanesize, slmpixelsize, wavelength, focallength):
     weightedtweezers = tweezerarray.copy()
+    weightedtweezers = weightedtweezers / cp.max(weightedtweezers)
     height, width = cp.shape(tweezerarray)
     y = cp.linspace(-height // 2, height // 2, height)
     x = cp.linspace(-width // 2, width // 2, width)
@@ -523,7 +524,7 @@ def derivephase_fixed(costfunction, targetintensity, initialphase, iterations1, 
     weights_previous = targetintensity.copy()
     
     # stdinttracker = [] # For use in error calculations
-    tweezerlocation = cp.where(targetintensity == 1)
+    tweezerlocation = cp.where(targetintensity > 0)
     err_maxmindiff = []
     err_uniformity = []
     err_powereff = []
@@ -555,7 +556,7 @@ def derivephase_fixed(costfunction, targetintensity, initialphase, iterations1, 
         slmplane = join_phase_ampl(expand(slmphase, magnification), inputbeam)
     
     weightsnew = cp.ones((numpixels * magnification, numpixels*magnification)) / 2
-    weightsnew[weights > 0] = weights[weights>0]
+    weightsnew[targetintensity > 0] = weights[targetintensity>0]
     weights_previous = weightsnew
 
     for _ in range(iterations2):
@@ -689,11 +690,12 @@ def createbeam(beamtype, size, sigma=1, mu = 1):
 
 def Pen_DeltaSqrt(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoords=[]):
     threshold = cp.mean(target_im) * 100
+    target_im = target_im / cp.mean(target_im)
     if harmonicremoval:
         w[target_im>threshold] = cp.sqrt((target_im[target_im>threshold] / std_int[target_im>threshold])) * w_prev[target_im>threshold]
         w[harmoniccoords] = 0
     else:
-        w[target_im>threshold] = cp.sqrt((target_im[target_im>threshold] / std_int[target_im>threshold])) * w_prev[target_im>threshold]
+        w[target_im>threshold] = target_im[target_im>threshold] * cp.sqrt((cp.mean(std_int[target_im>threshold]) / std_int[target_im>threshold])) #* w_prev[target_im>threshold]
     return (w)
 
 def Pen_Lukin(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoords=[]):
