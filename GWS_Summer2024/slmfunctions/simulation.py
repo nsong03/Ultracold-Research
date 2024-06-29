@@ -123,7 +123,7 @@ def sawtoothmake(t, width=1.0):
 def makeinitialkvectors(tweezers):
     """Determine the frequencies of input tweezers."""
     tweezers = tweezers.copy()
-    tweezers = tweezers / np.max(tweezers)
+    tweezers = tweezers / cp.max(tweezers)
     pixel_coordinates = cp.argwhere(tweezers == 1)
     center = cp.array(tweezers.shape) // 2
     vectors = pixel_coordinates - center
@@ -455,7 +455,7 @@ def derivephase(costfunction, targetintensity, initialphase, iterations, magnifi
     if target is already 3900 by 3900 magnification of 2 will make the simulation space much(!) larger. Beamtypes available are Gaussian or Constant."""
     # Remember, the calculation region is only numpixels by numpixels
     targetintensity = targetintensity.copy()
-    targetintensity = targetintensity / cp.max(targetintensity)
+    # targetintensity = targetintensity / cp.mean(targetintensity)
     # Just in case we're using a highly precise target (so not delta function)
     targetmagnification = cp.shape(targetintensity)[0] // numpixels
     targetintensity = expand(targetintensity, magnification)
@@ -479,7 +479,7 @@ def derivephase(costfunction, targetintensity, initialphase, iterations, magnifi
         fourierintensity = cp.square(cp.abs(fourierplane))
         stdint = cp.divide(fourierintensity, cp.max(fourierintensity))
 
-        err_maxmindiff.append(Err_MaxMinDiff(stdint, tweezerlocation))
+        err_maxmindiff.append(Err_MaxMinDiff(stdint, tweezerlocation, targetintensity))
         err_uniformity.append(Err_Uniformity(stdint, tweezerlocation))
         err_powereff.append(Err_PowerEff(stdint, tweezerlocation))
 
@@ -506,12 +506,12 @@ def derivephase(costfunction, targetintensity, initialphase, iterations, magnifi
     
     return readout
 
-def derivephase_fixed(costfunction, targetintensity, initialphase, iterations1, iterations2, magnification = 1, harmonicremoval = False, badharmonics_pixelcoords=[], beamtype="Constant", sigma=1, mu = 1):
+def derivephase_fixed(costfunction1, costfunction2, targetintensity, initialphase, iterations1, iterations2, magnification = 1, harmonicremoval = False, badharmonics_pixelcoords=[], beamtype="Constant", sigma=1, mu = 1):
     """All inputs are assumed to be of the same dimensionality, 1300 by 1300. Note that magnification adds on to the target, so
     if target is already 3900 by 3900 magnification of 2 will make the simulation space much(!) larger. Beamtypes available are Gaussian or Constant."""
     # Remember, the calculation region is only numpixels by numpixels
     targetintensity = targetintensity.copy()
-    targetintensity = targetintensity / cp.max(targetintensity)
+    # targetintensity = targetintensity / cp.mean(targetintensity)
     # Just in case we're using a highly precise target (so not delta function)
     targetmagnification = cp.shape(targetintensity)[0] // numpixels
     targetintensity = expand(targetintensity, magnification)
@@ -536,11 +536,11 @@ def derivephase_fixed(costfunction, targetintensity, initialphase, iterations1, 
         stdint = cp.divide(fourierintensity, cp.max(fourierintensity))
         # stdint = fourierintensity
 
-        err_maxmindiff.append(Err_MaxMinDiff(stdint, tweezerlocation))
-        err_uniformity.append(Err_Uniformity(stdint, tweezerlocation))
+        err_maxmindiff.append(Err_MaxMinDiff(stdint, tweezerlocation,targetintensity))
+        err_uniformity.append(Err_Uniformity(stdint, tweezerlocation,targetintensity))
         err_powereff.append(Err_PowerEff(stdint, tweezerlocation))
 
-        weights = costfunction(weights, weights_previous, targetintensity, stdint, harmonicremoval, badharmonics_pixelcoords)
+        weights = costfunction1(weights, weights_previous, targetintensity, stdint, harmonicremoval, badharmonics_pixelcoords)
         weights_previous = weights.copy()
         ## This might be a bit confusing, but weights is now the amplitude and we re-combine it with the phase to get the next iteration
         fourierangle = cp.angle(fourierplane)
@@ -555,7 +555,7 @@ def derivephase_fixed(costfunction, targetintensity, initialphase, iterations1, 
         readout_slmphase = slmphase.copy()
         slmplane = join_phase_ampl(expand(slmphase, magnification), inputbeam)
     
-    weightsnew = cp.ones((numpixels * magnification, numpixels*magnification)) / 2
+    weightsnew = cp.ones((numpixels * magnification, numpixels*magnification)) / 10
     weightsnew[targetintensity > 0] = weights[targetintensity>0]
     weights_previous = weightsnew
 
@@ -566,14 +566,17 @@ def derivephase_fixed(costfunction, targetintensity, initialphase, iterations1, 
         stdint = cp.divide(fourierintensity, cp.max(fourierintensity))
         # stdint = fourierintensity
 
-        err_maxmindiff.append(Err_MaxMinDiff(stdint, tweezerlocation))
-        err_uniformity.append(Err_Uniformity(stdint, tweezerlocation))
+        err_maxmindiff.append(Err_MaxMinDiff(stdint, tweezerlocation, targetintensity))
+        err_uniformity.append(Err_Uniformity(stdint, tweezerlocation, targetintensity))
         err_powereff.append(Err_PowerEff(stdint, tweezerlocation))
 
-        weights = costfunction(weights, weights_previous, targetintensity, stdint, harmonicremoval, badharmonics_pixelcoords)
+        weights = costfunction2(weights, weights_previous, targetintensity, stdint, harmonicremoval, badharmonics_pixelcoords)
         weights_previous = weights.copy()
         ## This might be a bit confusing, but weights is now the amplitude and we re-combine it with the phase to get the next iteration
         # fourierangle = cp.angle(fourierplane)
+        currangle = cp.angle(fourierplane)
+        anglediff = -fourierangle + currangle 
+        fourierangle += (anglediff) / 100
         fourierplane = join_phase_ampl(fourierangle, weights)
         slmplane = cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(fourierplane), norm="ortho"))     
         endingpower = cp.sum(cp.abs(slmplane)**2)
@@ -597,7 +600,7 @@ def camerafeedback_intensityuniformity(feedbackpencost, inputphase, target_im, s
     if target is already 3900 by 3900 magnification of 2 will make the simulation space much(!) larger. Beamtypes available are Gaussian or Constant."""
     # Remember, the calculation region is only numpixels by numpixels
     targetintensity = targetintensity.copy()
-    targetintensity = targetintensity / cp.max(targetintensity)
+    # targetintensity = targetintensity / cp.max(targetintensity)
     # Just in case we're using a highly precise target (so not delta function)
     targetmagnification = cp.shape(targetintensity)[0] // numpixels
     targetintensity = expand(targetintensity, magnification)
@@ -695,7 +698,7 @@ def Pen_DeltaSqrt(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoo
         w[target_im>threshold] = cp.sqrt((target_im[target_im>threshold] / std_int[target_im>threshold])) * w_prev[target_im>threshold]
         w[harmoniccoords] = 0
     else:
-        w[target_im>threshold] = target_im[target_im>threshold] * cp.sqrt((cp.mean(std_int[target_im>threshold]) / std_int[target_im>threshold])) * w_prev[target_im>threshold]
+        w[target_im>threshold] = cp.sqrt((cp.mean(std_int[target_im>threshold]) / std_int[target_im>threshold])) #* w_prev[target_im>threshold]
     return (w)
 
 def Pen_Lukin(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoords=[]):
@@ -704,9 +707,8 @@ def Pen_Lukin(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoords=
         w[target_im>threshold] = cp.sqrt((cp.mean(std_int[target_im>threshold]) / std_int[target_im>threshold])) * w_prev[target_im>threshold]
         w[harmoniccoords] = 0
     else:
-        w[target_im>threshold] = cp.sqrt((cp.mean(std_int[target_im>threshold]) / std_int[target_im>threshold])) * w_prev[target_im>threshold]
+        w[target_im>threshold] =  cp.sqrt(target_im[target_im>threshold] * (cp.mean(std_int[target_im>threshold]) / std_int[target_im>threshold])) * w_prev[target_im>threshold]
     return (w)
-
 
 def Pen_Sqrt(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoords=[]):
     threshold = cp.mean(target_im)
@@ -737,19 +739,16 @@ def weights_gaussian(w,target_im,w_prev,std_int, harmonicremoval = False): # Thi
     w[target_im!=0] = cp.sqrt((target_im[target_im!=0] / std_int[target_im!=0])) * w_prev[target_im!=0]
     return (w)
 
-def weightintensity_lukin(target, target_prev, std_int, target_im, harmonicremoval = False):
-    target[target_im==1] = cp.sqrt((cp.mean(std_int[target_im==1]) / (std_int[target_im==1]+0.001))) * target_prev[target_im==1]
-    return target
-
 ### Error Metrics
-def Err_MaxMinDiff(stdints, coordinates):
+def Err_MaxMinDiff(stdints, coordinates, target):
     # for stdint in stdints:
     #     max = cp.max(stdint[coordinates]) #Max value of the obtained intensity at the tweezers position
     #     min = cp.min(stdint[coordinates]) #Min value of the obtained intensity at the tweezers position
     #     errors.append((max-min)/(max+min))
-    stdints = cp.copy(stdints)
-    max = cp.max(stdints[coordinates]) #Max value of the obtained intensity at the tweezers position
-    min = cp.min(stdints[coordinates]) #Min value of the obtained intensity at the tweezers position
+    stdint = stdints[coordinates]
+    target = target[coordinates] 
+    max = cp.max(cp.abs((stdint-target)))#Max value of the obtained intensity at the tweezers position
+    min = cp.min(cp.abs((stdint-target))) #Min value of the obtained intensity at the tweezers position
     
     # errors = []
     # errors.append((max-min)/(max+min))
@@ -757,16 +756,17 @@ def Err_MaxMinDiff(stdints, coordinates):
 
     return errors
 
-def Err_Uniformity(stdints, coordinates):
-    # stdints = cp.copy(stdints)
-    # errors = cp.std(stdints[coordinates].flatten())
+def weightintensity_lukin(target, target_prev, std_int, target_im, harmonicremoval = False):
+    target[target_im==1] = cp.sqrt((cp.mean(std_int[target_im==1]) / (std_int[target_im==1]+0.001))) * target_prev[target_im==1]
+    return target
 
-    stdints = cp.copy(stdints)
-    max = cp.max(stdints[coordinates]) #Max value of the obtained intensity at the tweezers position
-    min = cp.min(stdints[coordinates]) #Min value of the obtained intensity at the tweezers position
-    errors = (max-min)/cp.mean(stdints[coordinates])
 
-    return cp.abs(errors)
+def Err_Uniformity(stdints, coordinates, target):
+    mismatch = stdints[coordinates] - target[coordinates]
+    percentageoff = mismatch / cp.mean(stdints[coordinates])
+    netpercentage = cp.abs(cp.max(percentageoff))
+    
+    return netpercentage
 
 def Err_PowerEff(stdints, coordinates, n = 1):
     # expanded_coords = set()
