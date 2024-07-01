@@ -38,3 +38,5 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from itertools import product
 import pickle
+import gzip
+import shutil

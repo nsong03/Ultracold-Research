@@ -987,6 +987,57 @@ def load_from_file(filepath, filename):
     print(f"Object loaded from {os.path.join(filepath, filename)}")
     return obj
 
+### New functions:
+
+def save_to_file(GWSclass, filepath, filename, chunk_size=1024*1024*50):
+    os.makedirs(filepath, exist_ok=True)  # Create the directory if it doesn't exist
+    phaseimg_path = os.path.join(filepath, f"{filename}_phase.bmp")
+    sizepix = GWSclass.get_slmphase().get().shape[1]
+    saver = np.zeros((1200, 1920))
+    saver[0:1200, int(1920 / 2 - sizepix / 2):int(1920 / 2 + sizepix / 2)] = (GWSclass.get_slmphase().get()[50:1250, :] / np.max(GWSclass.get_slmphase().get()[50:1250, :]) * 255)
+    phaseimg = (Image.fromarray(saver).convert('RGB'))
+    phaseimg.save(phaseimg_path)
+
+    # Serialize the object
+    serialized_data = pickle.dumps(GWSclass)
+
+    # Compress the serialized data
+    compressed_data = gzip.compress(serialized_data)
+
+    # Split the compressed data into chunks
+    total_size = len(compressed_data)
+    chunk_count = (total_size + chunk_size - 1) // chunk_size  # Calculate number of chunks needed
+
+    for i in range(chunk_count):
+        chunk_data = compressed_data[i * chunk_size:(i + 1) * chunk_size]
+        chunk_filename = f"{filename}_part_{i}.pkl"
+        with open(os.path.join(filepath, chunk_filename), 'wb') as file:
+            file.write(chunk_data)
+
+    print(f"Object saved to {filepath} in {chunk_count} parts.")
+
+def load_from_file(filepath, filename):
+    # Gather all the chunk files
+    chunk_files = sorted([f for f in os.listdir(filepath) if f.startswith(filename) and f.endswith('.pkl')])
+
+    # Read and concatenate all chunks
+    compressed_data = b''
+    for chunk_file in chunk_files:
+        with open(os.path.join(filepath, chunk_file), 'rb') as file:
+            compressed_data += file.read()
+
+    # Decompress the data
+    serialized_data = gzip.decompress(compressed_data)
+
+    # Deserialize the object
+    GWSclass = pickle.loads(serialized_data)
+
+    print(f"Object loaded from {filepath}.")
+    return GWSclass
+
+
+
+
 # Visualization
 
 def print_blob_coordinates(blobs):
