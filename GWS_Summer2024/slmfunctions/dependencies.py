@@ -27,6 +27,8 @@ from ctypes import *
 from scipy import misc
 from time import sleep
 from scipy.optimize import curve_fit
+import csv
+
 # from instrumental.drivers.cameras import uc480
 
 ## More dependencies
@@ -34,7 +36,9 @@ import scipy.fft as spfft
 from scipy.ndimage import gaussian_filter1d as sp_gaussian_filter1d
 from scipy.ndimage import affine_transform as sp_affine_transform
 from scipy.ndimage import gaussian_filter as sp_gaussian_filter
+from scipy.ndimage import affine_transform
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 from mpl_toolkits.mplot3d import Axes3D
 from itertools import product
 import pickle

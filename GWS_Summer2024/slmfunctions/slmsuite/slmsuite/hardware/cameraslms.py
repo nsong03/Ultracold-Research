@@ -150,7 +150,7 @@ class FourierSLM(CameraSLM):
             # nonzero = image.ravel()
             # nonzero = nonzero[nonzero != 0]
             # print(nonzero)
-
+        
             _, axs = plt.subplots(1, 2, figsize=(10,4))
             axs[0].imshow(image)
             axs[1].imshow(np.squeeze(analysis.take(image, point, size, centered=True, integrate=False)))
