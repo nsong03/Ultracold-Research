@@ -519,9 +519,10 @@ def maptoslm(inputarray, shape=(1200, 1920)):
         outputarray[start_y:start_y+inputarray.shape[0], start_x:start_x+inputarray.shape[1]] = inputarray
 
     # Crop outputarray to the specified shape
-    outputarray = outputarray[(max_dim - inputarray.shape[0])//2:(max_dim + inputarray.shape[0])//2, :]
+    outputarray = outputarray[(max_dim -shape[0])//2:(max_dim + shape[0])//2, :]
 
     return outputarray
+
 
 def map_cameratotargetint_delta(tweezerpower, uniformtarget, gridsize):
     """
@@ -675,6 +676,143 @@ def map_cameratotargetin_3by3regions(scaledregions, uniformtarget, gridsize):
 
     return mapped_target_image
 
+# Feedback
+
+def Exp_configureanchors(cam, slm, tweezerGWS, anchorGWS,exposure = 0.02, N = 25, rotateby90=0, fliphorizontal=False, flipvertical=False):
+    gridsize = get_gridsize(tweezerGWS.get_uniformtarget())
+    anchorphase = anchorGWS.get_slmphase() + np.pi # Because slmphase is currently stored -pi to pi
+    anchorphase = maptoslm(anchorphase)
+    slm.write(anchorphase, settle=True)
+    
+    cam.set_exposure(exposure)
+    camimage_anchor = adjustimage(cp.array(cam.get_image()), rotateby90, fliphorizontal, flipvertical)
+    
+    anchorblobs = blob_detect(camimage_anchor)
+    corners = identifycorners(anchorblobs)
+    angle = calculateangle(camimage_anchor)
+    refinedcamimage_anchor = rotate_image(camimage_anchor, angle)
+    empty_tweezerregions, empty_tweezercenters = definetweezerregions(refinedcamimage_anchor, gridsize, N)
+
+    
+    return angle, refinedcamimage_anchor, empty_tweezerregions, empty_tweezercenters
+
+
+def Exp_cameratoarray(cam, slm, tweezerGWS, anchorGWS, angle, empty_tweezercenters, exposure, N=25, scalingfactor = 4, retrievemax = False, BloborDelta = 'Delta', rotateby90=0, fliphorizontal=False, flipvertical=False):
+    '''mappedblobs - 2D array mapped on uniform targets, tweezerstatistics: 'gaussian fit, tweezer power, hordist, vertdist, 
+    cameradata: refined camera image, refined centers'''
+    gridsize = get_gridsize(tweezerGWS.get_uniformtarget())
+    tweezerphase = tweezerGWS.get_slmphase() + np.pi # Because slmphase is currently stored -pi to pi
+    tweezerphase = maptoslm(tweezerphase)
+    slm.write(tweezerphase, settle=True)
+    
+    cam.set_exposure(exposure)
+    camimage_tweezer = adjustimage(cp.array(cam.get_image()), rotateby90, fliphorizontal, flipvertical)
+    refinedcamimage_tweezer = rotate_image(camimage_tweezer, angle)
+    
+    goodnessoffit, refined_tweezercenters, tweezerregions, tweezerpower = extract_regions(refinedcamimage_tweezer, empty_tweezercenters, N, retrievemax)
+    # More statistics of fit:
+    tweezers_hordist, tweezers_vertdist = calculate_distances_centers(refined_tweezercenters, gridsize)
+    
+    
+    # Map camimage to array form
+    scaledregions = map_regions_to_3x3(tweezerregions, scalingfactor)
+    if BloborDelta == 'Delta':
+        mappedblobs = map_cameratotargetint_delta(tweezerpower, tweezerGWS.get_uniformtarget(), gridsize)
+    elif BloborDelta =='Blob':
+        mappedblobs = map_cameratotargetin_3by3regions(scaledregions, tweezerGWS.get_uniformtarget(), gridsize)
+        
+    tweezerstatistics =[goodnessoffit, tweezerpower, tweezers_hordist, tweezers_vertdist]
+    cameradata = [refinedcamimage_tweezer, refined_tweezercenters]
+    
+    return mappedblobs, tweezerstatistics, cameradata
+    
+
+    
+def camerafeedback_tweezers(cam, slm, optimizedout_tweezer, optimizedout_anchors, angle, empty_tweezercenters, exposure_tweezers, costfunction='Exp_DeltaFeedback', iterations = 1, N=25, scalingfactor= 4, retrievemax=False, BloborDelta='Delta', rotateby90 =0, fliphorizontal=False, flipvertical=False, beamtype = "Constant", sigma=1, mu  = 1, magnification = 1):
+    tweezerGWS = copy.copy(optimizedout_tweezer)
+
+    uniformtarget = optimizedout_tweezer.get_uniformtarget()
+    uniformtarget_out = uniformtarget.copy()
+    targetmagnification = cp.shape(uniformtarget)[0] // numpixels
+    magnification = targetmagnification * magnification
+    slmphase = set_circlemask(expand(optimizedout_tweezer.get_slmphase(), magnification), numpixels * magnification)
+    inputbeam = set_circlemask(createbeam(beamtype, numpixels * magnification, sigma, mu), numpixels * magnification)
+    outputbeam = set_circlemask(createbeam(beamtype, numpixels, sigma, mu), numpixels)
+
+    if optimizedout_tweezer.get_beam() == None:
+        inputbeam = set_circlemask(createbeam(beamtype, numpixels * magnification, sigma, mu), numpixels * magnification)
+        outputbeam = set_circlemask(createbeam(beamtype, numpixels, sigma, mu), numpixels)
+    else:
+        inputbeam = optimizedout_tweezer.get_beam().copy()
+        outputbeam = optimizedout_tweezer.get_beam().copy() 
+    
+    slmplane = join_phase_ampl(slmphase, inputbeam)
+    weights = optimizedout_tweezer.get_weights()
+    weights_previous = optimizedout_tweezer.get_weightsprev()
+    
+    
+    cutoff = cp.mean(uniformtarget)
+    tweezerlocation = cp.where(uniformtarget > cutoff)
+    err_maxmindiff = []
+    err_uniformity = []
+    err_powereff = []
+    tweezerstatistics_out = []
+    
+    startingpower = cp.sum(cp.abs(slmplane)**2)
+    fourierplane = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(slmplane), norm="ortho"))
+    fourierintensity = cp.square(cp.abs(fourierplane))
+    
+    ### Make sure we don't change the phase now
+    fourierangle = cp.angle(fourierplane)
+    
+    
+    for _ in range(iterations):
+        mappedblobs, tweezerstatistics, cameradata = Exp_cameratoarray(cam, slm, tweezerGWS, optimizedout_anchors, angle, empty_tweezercenters, exposure_tweezers, N, scalingfactor, retrievemax, BloborDelta, rotateby90, fliphorizontal, flipvertical)
+        stdint = mappedblobs
+        weights = costfunction(weights, weights_previous, uniformtarget, stdint)
+        weights_previous = weights.copy()
+        fourierplane = join_phase_ampl(fourierangle, weights)
+        slmplane = cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(fourierplane), norm="ortho"))     
+        endingpower = cp.sum(cp.abs(slmplane)**2)
+        slmplane = cp.multiply(cp.divide(slmplane, endingpower), startingpower)
+        slmplane_numpixels = slmplane.copy()
+        slmplane_numpixels = cp.mean(slmplane_numpixels.reshape(numpixels, magnification, numpixels, magnification), axis=(-3,-1))
+        
+        slmphase = undiscretize_phase(discretize_phase(set_circlemask(cp.angle(slmplane_numpixels), numpixels)))
+        readout_slmphase = slmphase.copy()
+        tweezerGWS.set_slmphase(readout_slmphase)
+        
+        
+        slmplane = join_phase_ampl(expand(slmphase, magnification), inputbeam)     
+        
+        
+        err_maxmindiff.append(Err_MaxMinDiff(stdint, tweezerlocation, uniformtarget))
+        err_uniformity.append(Err_Uniformity(stdint, tweezerlocation, uniformtarget))
+        err_powereff.append(Err_PowerEff(stdint, tweezerlocation))
+        tweezerstatistics_out.append(tweezerstatistics)
+        
+    errors = [err_maxmindiff, err_uniformity, err_powereff]
+    labels = ["MaxMinDiff","Uniformity", "Power Efficiency"]
+    inputbeam = cp.mean(inputbeam.reshape(numpixels, magnification, numpixels, magnification), axis=(-3,-1))
+    targetintensity = cp.mean(uniformtarget.reshape(numpixels, magnification, numpixels, magnification), axis=(-3,-1))
+
+    
+    metrics = tweezerstatistics_out
+    tweezerGWS.set_all(readout_slmphase, fourierangle, weights, weights_previous, outputbeam, stdint, uniformtarget_out, uniformtarget, errors, labels)
+    cameradata_last = cameradata
+
+    return metrics, cameradata_last, tweezerGWS 
+    
+    
+
+def Pen_Lukin(w,w_prev,target_im,std_int, harmonicremoval=False, harmoniccoords=[]):
+    threshold = cp.mean(target_im)
+    if harmonicremoval:
+        w[target_im>threshold] = cp.sqrt((cp.mean(std_int[target_im>threshold]) / std_int[target_im>threshold])) * w_prev[target_im>threshold]
+        w[harmoniccoords] = 0
+    else:
+        w[target_im>threshold] =  cp.sqrt(target_im[target_im>threshold] * (cp.mean(std_int[target_im>threshold]) / std_int[target_im>threshold])) * w_prev[target_im>threshold]
+    return (w)
 
 
 

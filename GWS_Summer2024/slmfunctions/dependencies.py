@@ -28,7 +28,7 @@ from scipy import misc
 from time import sleep
 from scipy.optimize import curve_fit
 import csv
-
+import copy
 # from instrumental.drivers.cameras import uc480
 
 ## More dependencies

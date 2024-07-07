@@ -53,6 +53,7 @@ class kvectorset:
 class OptimizedOutput:
     def __init__(self):
         self.slmphase = None
+        self.fourierphase = None
         self.stdint = None
         self.weights = None
         self.weightsprev = None
@@ -68,6 +69,12 @@ class OptimizedOutput:
     def get_slmphase(self):
         return self.slmphase
 
+    def set_fourierphase(self, fourierphase):
+        self.fourierphase = fourierphase
+    
+    def get_fourierphase(self):
+        return self.fourierphase
+        
     def set_weights(self, weights):
         self.weights = weights
     
@@ -129,9 +136,10 @@ class OptimizedOutput:
     def add_error_and_label(self, error, label):
         self.add_error(error, label)
 
-    def set_all(self, slmphase, weights, weightsprev, beam, stdint, targetim, uniformtarget, errors, labels):
+    def set_all(self, slmphase, fourierphase, weights, weightsprev, beam, stdint, targetim, uniformtarget, errors, labels):
         '''Stores: phase, weights, weightsprev, beam, stdint, targetim, uniformtarget'''
         self.set_slmphase(slmphase)
+        self.set_fourierphase(fourierphase)
         self.set_weights(weights)
         self.set_weightsprev(weightsprev)
         self.set_beam(beam)
@@ -680,7 +688,7 @@ def derivephase_fixed(costfunction1, costfunction2, targetintensity2, initialpha
     targetintensity = cp.mean(targetintensity.reshape(numpixels, magnification, numpixels, magnification), axis=(-3,-1))
 
     readout = OptimizedOutput()
-    readout.set_all(readout_slmphase, weights, weights_previous, outputbeam, stdint, targetintensity_out, uniformtarget, errors, labels)
+    readout.set_all(readout_slmphase, fourierangle, weights, weights_previous, outputbeam, stdint, targetintensity_out, uniformtarget, errors, labels)
     
     return readout
 
@@ -976,10 +984,9 @@ def save_to_file(GWSclass, filepath, filename):
     else:
         slm_phase = GWSclass.get_slmphase().get()[50:1250, :]  # Assuming cupy array
     
-    max_value = np.max(slm_phase)
     saver = np.zeros((1200, 1920))
-    saver[0:1200, int(1920/2-sizepix/2):int(1920/2+sizepix/2)] = (slm_phase / max_value * 255)
-    phaseimg = Image.fromarray(saver.astype(np.uint8)).convert('RGB')
+    saver[0:1200, int(1920/2-sizepix/2):int(1920/2+sizepix/2)] = discretize_phase(slm_phase)
+    phaseimg = Image.fromarray(saver).convert('RGB')
     phaseimg.save(phaseimg_path)
 
     filename = filename + ".pkl"
