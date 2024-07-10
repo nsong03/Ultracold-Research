@@ -623,6 +623,13 @@ def derivephase_fixed(costfunction1, costfunction2, targetintensity2, initialpha
     err_maxmindiff = []
     err_uniformity = []
     err_powereff = []
+    
+    
+    fourierplane = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(slmplane), norm="ortho"))
+    fourierintensity = cp.square(cp.abs(fourierplane))
+    stdint = cp.divide(fourierintensity, cp.max(fourierintensity))
+    fourierangle = cp.angle(fourierplane)
+
 
     for _ in range(iterations1):
         startingpower = cp.sum(cp.abs(slmplane)**2)
