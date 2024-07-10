@@ -363,7 +363,7 @@ class ThorCam(Camera):
 
             self.profile = profile
 
-    def get_image(self, timeout_s=.1, trigger=True, grab=True, attempts=1):
+    def get_image(self, timeout_s=1, trigger=True, grab=True, attempts=5):
         """
         See :meth:`.Camera.get_image`. By default ``trigger=True`` and ``grab=True`` which
         will result in blocking image acquisition.
