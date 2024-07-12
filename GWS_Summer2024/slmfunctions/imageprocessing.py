@@ -1,7 +1,7 @@
 from .dependencies import *
 from .settings import *
 from .simulation import *
-# from slmsuite.holography.analysis import * 
+from slmsuite.holography.analysis import * 
 
 def plot_arrays(arrays, subplot_figsize=(5, 5)):
     num_arrays = len(arrays)
