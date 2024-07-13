@@ -275,9 +275,9 @@ def retrieveforces_idealconditions(AWGwaveform, positions, globalvariable):
     calibrationshot_energy = cp.sum(cp.abs(calibrationshot)**2)
     rescalingfactor = tweezerenergy_max / cp.max(cp.square(cp.abs(calibrationshot))) 
     
-    calibrationshot = cp.square(cp.abs(calibrationshot))  
+    calibrationshot = realtofourier_norm(zeropadframe(AWGwaveform[0:numpix_frame], globalvariables),calibrationshot_energy) 
     tweezerprofile = removeleftside(calibrationshot)
-    tweezerforce = gradient(tweezerprofile) * rescalingfactor / pixelsize_fourier
+    tweezerforce = tweezerprofile* rescalingfactor / pixelsize_fourier
 
     
     dummyindices1 = np.linspace(0,1,len(positions))
@@ -291,7 +291,8 @@ def retrieveforces_idealconditions(AWGwaveform, positions, globalvariable):
 
     shifted_profiles = shift_tweezer_profile(tonumpy(tweezerforce), tonumpy(expanded_position_pixels))
     
-    return shifted_profiles
+    return calculateforces(tocupy(shifted_profiles))
+
 
 
 def retrievepotentials_idealconditions(AWGwaveform, positions, globalvariable):
@@ -304,7 +305,7 @@ def retrievepotentials_idealconditions(AWGwaveform, positions, globalvariable):
     calibrationshot_energy = cp.sum(cp.abs(calibrationshot)**2)
     rescalingfactor = tweezerenergy_max / cp.max(cp.square(cp.abs(calibrationshot))) 
     
-    calibrationshot = cp.square(cp.abs(calibrationshot))  
+    calibrationshot = realtofourier_norm(zeropadframe(AWGwaveform[0:numpix_frame], globalvariables),calibrationshot_energy) 
     tweezerprofile = removeleftside(calibrationshot)
     tweezerforce = tweezerprofile* rescalingfactor / pixelsize_fourier
 
@@ -459,17 +460,8 @@ def montecarlo(forces, globalvariables, initialdistribution, atommass):
 
 # quality of life
 def gradient(arr):
-    # Calculate the spacing between points
-    dx = 1.0  # Assuming unit spacing for simplicity; adjust if needed
-    
-    # Compute the first derivative using central differences
-    derivative = (cp.roll(arr, -1) - cp.roll(arr, 1)) / (2 * dx)
-    
-    # Handle boundaries with forward and backward differences
-    derivative[0] = (arr[1] - arr[0]) / dx
-    derivative[-1] = (arr[-1] - arr[-2]) / dx
-    
-    return cp.array(derivative)
+    # Calculate the spacing between points    
+    return tocupy(np.gradient(tonumpy(arr)))
 
 def tonumpy(array):
     '''Checks if the input array is a CuPy array and converts it to a NumPy array if necessary.'''
@@ -858,38 +850,46 @@ def plots_fixeddistance(movementtimes, initialtemperatures, analysisout):
     """
     # Get the number of movement times and initial temperatures
     num_movementtimes, num_initialtemperatures = analysisout.shape
+    kb = 1.38*10**(-23)
 
     # Create a figure and axis
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, axs = plt.subplots(1,2,figsize=(15, 6))
 
     # Iterate over each combination of movement time and initial temperature
     for j in range(num_initialtemperatures):
         # Initialize an empty list to store the survival rates for each movement time
         survival_rates = []
-
+        temperatures = []
         # Iterate over each movement time
         for i in range(num_movementtimes):
             # Get the results for the current combination
-            survivalrate, _, _ = analysisout[i, j]
-
+            survivalrate, xout, vout = analysisout[i, j]
+            vout = tonumpy(vout)
+            temperature = np.mean(vout**2 * atommass / (3*kb))
             # Append the survival rate to the list
             survival_rates.append(survivalrate)
-
+            temperatures.append(temperature* 1e6)
         # Plot the survival rates for the current initial temperature
-        ax.plot(movementtimes*10**6, survival_rates, label=f"Initial Temperature (uK): {initialtemperatures[j]*10**6}")
+        axs[0].plot(movementtimes * 1e6, survival_rates, label=f"T0: {initialtemperatures[j] * 1e6:.2f} μK")
+        
+        # Plot the temperatures for the current initial temperature
+        axs[1].plot(movementtimes * 1e6, temperatures, label=f"T0: {initialtemperatures[j] * 1e6:.2f} μK")
 
-    # Set the x-axis label and title
-    ax.set_xlabel('Movement Time (us)')
-    ax.set_title('Survival Probability vs Movement Time')
+    # Set labels, title, and legend for survival rate plot
+    axs[0].set_xlabel('Movement Time (μs)')
+    axs[0].set_ylabel('Survival Probability')
+    axs[0].set_title('Survival Probability vs Movement Time')
+    axs[0].set_ylim(0, 100)
+    axs[0].legend()
 
-    # Set the y-axis label and limit
-    ax.set_ylabel('Survival Probability')
-    ax.set_ylim(0, 100)
+    # Set labels, title, and legend for temperature plot
+    axs[1].set_xlabel('Movement Time (μs)')
+    axs[1].set_ylabel('Temperature (μK)')
+    axs[1].set_title('Temperature vs Movement Time')
+    axs[1].legend()
 
-    # Add a legend
-    ax.legend()
-
-    # Show the plot
+    # Adjust layout and show the plot
+    plt.tight_layout()
     plt.show()
 
 # Optimization

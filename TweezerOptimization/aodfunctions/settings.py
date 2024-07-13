@@ -9,8 +9,8 @@ wavelength = 630 * 10**(-9)
 print("Cycletime in nanoseconds: ", cycletime * 1e9)
 
 # Simulation Constants
-numpix_frame = 1000
-numpix_real = 2048
+numpix_frame = 500
+numpix_real = 4096
 pixelsize_real = aodaperture / numpix_frame
 aperturesize_real = numpix_real * pixelsize_real
 aperturesize_fourier = wavelength * focallength / (pixelsize_real)
@@ -24,7 +24,7 @@ movementtime = 30*10**(-6) # Time for the movement of the AOD
 timestep = cycletime / numpix_frame
 print("Timestep in nanoseconds:", timestep * 10**9)
 startlocation = 50*10**(-6) # Start location of the AOD in microns. 0 is set to the center of Fourier space.
-endlocation = 70*10**(-6) # End location of the AOD in microns
+endlocation = 100*10**(-6) # End location of the AOD in microns
 
 
 optimizationbasisfunctions = 'Chebyshev'  # Basis for the polynomial fit
@@ -38,3 +38,4 @@ hbar = 6.626*10**(-34)
 
 globalvariables = [aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients]
 aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+
