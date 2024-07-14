@@ -236,7 +236,7 @@ def fouriertoreal(inputarray):
     fourierintensity = cp.square (cp.abs(outputarray))
     return fourierintensity
 
-def initguess_continuouscosine(AWGwaveform, positions, time, globalvariables):
+def initguess_waveform(AWGwaveform, positions, time, globalvariables):
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
 
     AWG_fourierspace = cp.zeros(len(AWGwaveform))
@@ -256,6 +256,11 @@ def initguess_continuouscosine(AWGwaveform, positions, time, globalvariables):
 
     return AWGwaveform_out
 
+def cosinephaseresponse(AWGwaveform):
+    return AWGwaveform # DO NOTHING because the waveform is precisely cosine
+
+def exponentialphaseresponse(AWGwaveform):
+    return AWGwaveform + cp.sqrt(1-AWGwaveform**2) * 1j # Eulers identity  + Trig trick
 
 
 def snapshot(cycle, globalvariables):
@@ -292,7 +297,6 @@ def retrieveforces_idealconditions(AWGwaveform, positions, globalvariable):
     shifted_profiles = shift_tweezer_profile(tonumpy(tweezerforce), tonumpy(expanded_position_pixels))
     
     return calculateforces(tocupy(shifted_profiles))
-
 
 
 def retrievepotentials_idealconditions(AWGwaveform, positions, globalvariable):
@@ -424,7 +428,7 @@ def initdistribution_MaxwellBoltzmann(num_particles, temperature, positionstd, a
     std_position = positionstd / pixelsize_fourier # pixel position
     # Generating velocities
     velocities = np.random.normal(0, std_velocity, (num_particles,1)) # in units of pixels/s
-    
+    velocities[velocities > 2* np.std(velocities)] *= 0.5
     # Generating positions (assuming normal distribution centered at 0 with some spread) # in units of pixels
     positions = np.random.normal(0, std_position, (num_particles,1)) +x0
     
@@ -484,7 +488,7 @@ def tocupy(array):
 def zeropadframe(frame, globalvariables):
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
 
-    paddedframe = cp.zeros(numpix_real)
+    paddedframe = cp.zeros(numpix_real, dtype=complex)
     paddedframe[(numpix_real - numpix_frame) // 2: (numpix_real + numpix_frame) // 2] = frame
     return paddedframe
 
@@ -651,7 +655,7 @@ def shift_tweezer_profile(tweezerprofile, positions):
 # Visualization
 
 def removeleftside(arr):
-    arr[0:len(arr)//2] = 0
+    # arr[0:len(arr)//2] = 0
     return arr
 
 def zoomin(array_1d, N):
@@ -766,7 +770,7 @@ def analyze_survivalprobability(xout, finalposition, gaussianwidth, globalvariab
     
     return percentage_within_bounds
 
-def analyze_fixeddistance_nonoptimized(movementtimes, initialtemperatures, calctype="Ideal", guesstype = "Linear", timeperframe=1, globalvariables=globalvariables):
+def analyze_fixeddistance_nonoptimized(movementtimes, initialtemperatures, responsetype="Cosine",calctype="Ideal", guesstype = "Linear", timeperframe=1, globalvariables=globalvariables):
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
 
     # Calculate the number of movement times and initial temperatures
@@ -795,13 +799,19 @@ def analyze_fixeddistance_nonoptimized(movementtimes, initialtemperatures, calct
                     
                 fourierpixels, time = positionstofourier(optimized_position, time, globalvariables)
                 expanded_position, expanded_time = expand_position_array(time, fourierpixels, globalvariables)
-                AWGinitguesscosine = initguess_continuouscosine(AWGwaveform, optimized_position, time, globalvariables)
                 
-                shotlast = realtofourier(zeropadframe(AWGinitguesscosine[-numpix_frame:], globalvariables))
+                if responsetype == "Cosine":
+                    AWGinput = initguess_waveform(AWGwaveform, optimized_position, time, globalvariables)
+                    AWGphase = cosinephaseresponse(AWGinput)                
+                elif responsetype =="Exponential":
+                    AWGinput = initguess_waveform(AWGwaveform, optimized_position, time, globalvariables)
+                    AWGphase = exponentialphaseresponse(AWGinput)     
+                    
+                shotlast = realtofourier(zeropadframe(AWGphase[-numpix_frame:], globalvariables))
                 gaussianwidth = get_gaussianwidth_1d(tonumpy(zoomin(removeleftside(shotlast), 2)))
                 endtweezerlocation = get_gaussiancenter_1d(removeleftside(shotlast))
 
-                forces = retrieveforces(AWGinitguesscosine, globalvariables, timeperframe, True)
+                forces = retrieveforces(AWGphase, globalvariables, timeperframe, True)
                 print(max(forces[len(forces)//2]))
                 
                 initial_distributions = initdistribution_MaxwellBoltzmann(num_particles, initialtemperatures[j], 1e-8, atommass, globalvariables)
@@ -820,12 +830,18 @@ def analyze_fixeddistance_nonoptimized(movementtimes, initialtemperatures, calct
                 elif guesstype == "SinSq":
                     optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_sinsqramp(globalvariables)
                 
-                AWGinitguesscosine = initguess_continuouscosine(AWGwaveform, optimized_position, time, globalvariables)
-                shotlast = realtofourier(zeropadframe(AWGinitguesscosine[-numpix_frame:], globalvariables))
+                if responsetype == "Cosine":
+                    AWGinput = initguess_waveform(AWGwaveform, optimized_position, time, globalvariables)
+                    AWGphase = cosinephaseresponse(AWGinput)                
+                elif responsetype =="Exponential":
+                    AWGinput = initguess_waveform(AWGwaveform, optimized_position, time, globalvariables)
+                    AWGphase = exponentialphaseresponse(AWGinput)     
+                    
+                shotlast = realtofourier(zeropadframe(AWGphase[-numpix_frame:], globalvariables))
                 gaussianwidth = get_gaussianwidth_1d(tonumpy(zoomin(removeleftside(shotlast), 2)))
                 endtweezerlocation = get_gaussiancenter_1d(removeleftside(shotlast))
                 
-                forces = retrieveforces_idealconditions(AWGinitguesscosine, optimized_position, True)
+                forces = retrieveforces_idealconditions(AWGphase, optimized_position, True)
                 print(max(forces[len(forces)//2]))
                 
                 initial_distributions = initdistribution_MaxwellBoltzmann(num_particles, initialtemperatures[j], 1e-8, atommass, globalvariables)
@@ -837,8 +853,6 @@ def analyze_fixeddistance_nonoptimized(movementtimes, initialtemperatures, calct
                 results[i, j] = [np.array(survivalprobability),tonumpy(xout),tonumpy(vout)]
 
     return results
-
-
 
 
 def plots_fixeddistance(movementtimes, initialtemperatures, analysisout):
@@ -892,7 +906,39 @@ def plots_fixeddistance(movementtimes, initialtemperatures, analysisout):
     plt.tight_layout()
     plt.show()
 
+
 # Optimization
 
-def init():
+
+def init_opt_waveformfitFourierVariant(AWGinitguess,freqres, ampres, phaseres, globalvariables):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+
+    optimizationspace = cp.zeros(len(AWGinitguess) - 2*numpix_frame, dtype=complex)
+    
+    frequencies = cp.empty(freqres)
+    amplitudes = cp.empty((freqres, ampres))
+    phaseres = cp.empty((freqres, phaseres))
+    
+    constructamplitudes = cp.
+    
+    
+    AWGwaveform_out = cp.cos(2*cp.pi*cp.cumsum(AWG_fourierspace) * (AWG_time[1] - AWG_time[0]))
+
+    
+    
     return
+
+   AWG_fourierspace = cp.zeros(len(AWGwaveform))
+    fourierpixels, time = positionstofourier(positions, time, globalvariables)
+    expanded_fourierpixels, expanded_time = expand_position_array(time, fourierpixels, globalvariables)
+    AWG_fourierspace[numpix_frame: -numpix_frame] = tocupy(expanded_fourierpixels)
+    frequency_t0 = fourierpixels[0]
+    frequency_tF = fourierpixels[-1]
+    AWG_fourierspace[0:numpix_frame] = frequency_t0
+    AWG_fourierspace[-numpix_frame:] = frequency_tF
+    AWG_time = cp.linspace(0, 1*len(AWGwaveform) / numpix_real, len(AWGwaveform))
+    
+    AWG_fourierspace = AWG_fourierspace - numpix_real // 2
+
+    AWGwaveform_out = 2*cp.pi*cp.cumsum(AWG_fourierspace) * (AWG_time[1] - AWG_time[0])
+    
