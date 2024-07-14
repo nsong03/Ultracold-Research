@@ -996,18 +996,3 @@ def init_opt_waveformfitFourierVariant(AWGinitguess,freqres, ampres, phaseres, g
 
 
     return
-
-   AWG_fourierspace = cp.zeros(len(AWGwaveform))
-    fourierpixels, time = positionstofourier(positions, time, globalvariables)
-    expanded_fourierpixels, expanded_time = expand_position_array(time, fourierpixels, globalvariables)
-    AWG_fourierspace[numpix_frame: -numpix_frame] = tocupy(expanded_fourierpixels)
-    frequency_t0 = fourierpixels[0]
-    frequency_tF = fourierpixels[-1]
-    AWG_fourierspace[0:numpix_frame] = frequency_t0
-    AWG_fourierspace[-numpix_frame:] = frequency_tF
-    AWG_time = cp.linspace(0, 1*len(AWGwaveform) / numpix_real, len(AWGwaveform))
-    
-    AWG_fourierspace = AWG_fourierspace - numpix_real // 2
-
-    AWGwaveform_out = 2*cp.pi*cp.cumsum(AWG_fourierspace) * (AWG_time[1] - AWG_time[0])
-    
