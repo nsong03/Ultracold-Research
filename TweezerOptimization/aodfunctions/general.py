@@ -880,6 +880,7 @@ def plots_fixeddistance(movementtimes, initialtemperatures, analysisout):
             survivalrate, xout, vout = analysisout[i, j]
             vout = tonumpy(vout)
             temperature = np.mean(vout**2 * atommass / (3*kb))
+            temperature_errors = np.std(vout**2 * atommass / (3*kb))
             # Append the survival rate to the list
             survival_rates.append(survivalrate)
             temperatures.append(temperature* 1e6)
@@ -888,6 +889,7 @@ def plots_fixeddistance(movementtimes, initialtemperatures, analysisout):
         
         # Plot the temperatures for the current initial temperature
         axs[1].plot(movementtimes * 1e6, temperatures, label=f"T0: {initialtemperatures[j] * 1e6:.2f} μK")
+        axs[1].errorbar(movementtimes * 1e6, temperatures, yerr=temperature_errors, label=f"T0: {initialtemperatures[j] * 1e6:.2f} μK")
 
     # Set labels, title, and legend for survival rate plot
     axs[0].set_xlabel('Movement Time (μs)')
@@ -906,26 +908,93 @@ def plots_fixeddistance(movementtimes, initialtemperatures, analysisout):
     plt.tight_layout()
     plt.show()
 
+def plots_fixeddistance_multipleanalysis(movementtimes, initialtemperatures, analysisout, titles):
+    """
+    Plot the results of the fixed distance analysis.
+    
+    Parameters:
+    analysisout (np.ndarray): Array of results from the fixed distance analysis.
+    """
+    # Get the number of movement times and initial temperatures
+    num_analysis, num_movementtimes, num_initialtemperatures = analysisout.shape
+    kb = 1.38*10**(-23)
+
+    # Create a figure and axis
+    fig, axs = plt.subplots(1,2,figsize=(15, 6))
+    
+    # Iterate over each combination of movement time and initial temperature
+    for k in range(num_analysis):
+        for j in range(num_initialtemperatures):
+            # Initialize an empty list to store the survival rates for each movement time
+            survival_rates = []
+            temperatures = []
+            temperaturerrors = []
+            # Iterate over each movement time
+            for i in range(num_movementtimes):
+                # Get the results for the current combination
+                survivalrate, xout, vout = analysisout[k][i, j]
+                vout = tonumpy(vout)
+                temperature = np.mean(vout**2 * atommass / (3*kb))
+                temperature_error = np.std(vout**2 * atommass / (3*kb))
+                # Append the survival rate to the list
+                survival_rates.append(survivalrate)
+                temperatures.append(temperature* 1e6)
+                temperaturerrors.append(temperature_error*1e6)
+            # Plot the survival rates for the current initial temperature
+            axs[0].plot(movementtimes * 1e6, survival_rates, label=f"T0: {initialtemperatures[j] * 1e6:.2f} μK,  {titles[k]}")
+            
+            # Plot the temperatures for the current initial temperature
+            # axs[1].plot(movementtimes * 1e6, temperatures, label=f"T0: {initialtemperatures[j] * 1e6:.2f} μK")
+            axs[1].errorbar(movementtimes * 1e6, temperatures, yerr=temperaturerrors, label=f"T0: {initialtemperatures[j] * 1e6:.2f} μK,  {titles[k]}")
+
+    # Set labels, title, and legend for survival rate plot
+    axs[0].set_xlabel('Movement Time (μs)')
+    axs[0].set_ylabel('Survival Probability')
+    axs[0].set_title('Survival Probability vs Movement Time')
+    axs[0].set_ylim(-5, 105)
+    axs[0].legend()
+
+    # Set labels, title, and legend for temperature plot
+    axs[1].set_xlabel('Movement Time (μs)')
+    axs[1].set_ylabel('Temperature (μK)')
+    axs[1].set_title('Temperature vs Movement Time')
+    axs[1].legend()
+
+    # Adjust layout and show the plot
+    plt.tight_layout()
+    plt.show()
 
 # Optimization
+def constructamplitudes(amplitudes, optimizationspace):
+    
+    return 
 
+def constructphases(amplitudes, optimizationspace):
+    
+    return 
 
 def init_opt_waveformfitFourierVariant(AWGinitguess,freqres, ampres, phaseres, globalvariables):
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
 
+    AWGwaveform = cp.zeros(len(AWGinitguess))
+    AWGwaveform[0:numpix_frame] = AWGinitguess[0:numpix_frame]
+    AWGwaveform[-numpix_frame:] = AWGinitguess[-numpix_frame:]
+    
+    optimizationsection = AWGinitguess[numpix_frame:-numpix_frame]
     optimizationspace = cp.zeros(len(AWGinitguess) - 2*numpix_frame, dtype=complex)
+    
     
     frequencies = cp.empty(freqres)
     amplitudes = cp.empty((freqres, ampres))
     phaseres = cp.empty((freqres, phaseres))
     
-    constructamplitudes = cp.
+    constructedamplitudes = constructamplitudes(amplitudes, optimizationspace)
+    constructedphases = constructphases(phaseres, optimizationspace)
     
+    optimizedwaveform = constructFourierVariant(frequencies, constructedamplitudes, constructedphases, globalvariables )
     
-    AWGwaveform_out = cp.cos(2*cp.pi*cp.cumsum(AWG_fourierspace) * (AWG_time[1] - AWG_time[0]))
 
-    
-    
+
     return
 
    AWG_fourierspace = cp.zeros(len(AWGwaveform))
