@@ -18,8 +18,8 @@ from itertools import product
 cupyon=True
 
 try:
-    import cupy as cp
     import numpy as np
+    import cupy as cp
     import cupyx.scipy.fft as cpfft
     import cupyx.scipy.ndimage
     from cupyx.scipy.ndimage import gaussian_filter1d as cp_gaussian_filter1d
@@ -34,4 +34,6 @@ except ImportError:
     cp_gaussian_filter = sp_gaussian_filter
     cp_affine_transform = sp_affine_transform
     cupyon = False
+    from numpy.lib.stride_tricks import as_strided
+
     print("cupy not installed. Using numpy.")

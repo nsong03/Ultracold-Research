@@ -469,10 +469,10 @@ def gradient(arr):
 
 def tonumpy(array):
     '''Checks if the input array is a CuPy array and converts it to a NumPy array if necessary.'''
-    if isinstance(array, cp.ndarray):
-        return cp.asnumpy(array)  # Convert CuPy array to NumPy array
-    elif isinstance(array, np.ndarray):
-        return array  # Already a NumPy array, return as is
+    if isinstance(array, np.ndarray):
+        return array  # Convert CuPy array to NumPy array
+    elif isinstance(array, cp.ndarray):
+        return cp.asnumpy(array)  # Already a NumPy array, return as is
     else:
         raise TypeError("Input is neither a NumPy nor a CuPy array")
 
