@@ -20,7 +20,7 @@ print("Fourier space spacing in microns: ", pixelsize_fourier*10**6)
 print("Fourier space aperture in microns: ", aperturesize_fourier*10**6)
 
 # Adjustable Variables
-movementtime = 30*10**(-6) # Time for the movement of the AOD
+movementtime = 100*10**(-6) # Time for the movement of the AOD
 timestep = cycletime / numpix_frame
 print("Timestep in nanoseconds:", timestep * 10**9)
 startlocation = -10*10**(-6) # Start location of the AOD in microns. 0 is set to the center of Fourier space.
@@ -30,7 +30,7 @@ endlocation = 10*10**(-6) # End location of the AOD in microns
 optimizationbasisfunctions = 'Chebyshev'  # Basis for the polynomial fit
 numcoefficients = 100
 
-num_particles = 1000
+num_particles = 10000
 atommass = 1.41922*10**(-25) # Mass of the atom
 tweezerdepth = 10*10**6 # Depth of the tweezer in Hertz
 hbar = 6.626*10**(-34)
