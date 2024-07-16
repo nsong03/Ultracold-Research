@@ -14,11 +14,14 @@ from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from itertools import product
+import numpy as np
+from numpy.polynomial.legendre import legval
+from numpy.polynomial.legendre import Legendre
+
 
 cupyon=True
 
 try:
-    import numpy as np
     import cupy as cp
     import cupyx.scipy.fft as cpfft
     import cupyx.scipy.ndimage

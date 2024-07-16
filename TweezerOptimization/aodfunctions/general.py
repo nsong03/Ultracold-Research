@@ -251,16 +251,17 @@ def initguess_waveform(AWGwaveform, positions, time, globalvariables):
     
     AWG_fourierspace = AWG_fourierspace - numpix_real // 2
 
-    AWGwaveform_out = cp.cos(2*cp.pi*cp.cumsum(AWG_fourierspace) * (AWG_time[1] - AWG_time[0]))
+    AWGwaveform_out = 2*cp.pi*cp.cumsum(AWG_fourierspace) * (AWG_time[1] - AWG_time[0])
     
 
     return AWGwaveform_out
 
 def cosinephaseresponse(AWGwaveform):
-    return AWGwaveform # DO NOTHING because the waveform is precisely cosine
+    return cp.cos(AWGwaveform )      # DO NOTHING because the waveform is precisely cosine
 
 def exponentialphaseresponse(AWGwaveform):
-    return AWGwaveform + cp.sqrt(1-AWGwaveform**2) * 1j # Eulers identity  + Trig trick
+    # return AWGwaveform + cp.sqrt(1-AWGwaveform**2) * 1j # Eulers identity  + Trig trick
+    return cp.exp(AWGwaveform*1j)
 
 
 def snapshot(cycle, globalvariables):
@@ -342,22 +343,22 @@ def retrieveforces(AWGwaveform, globalvariables, timeperframe = 1, filterOn=True
     strides = (AWGwaveform.strides[0] * timeperframe, AWGwaveform.strides[0])
     shape = (num_snapshots, numpix_frame)
     snapshots = as_strided(AWGwaveform, shape=shape, strides=strides)    
-    snapshots = cp.array([realtofourier_norm(zeropadframe(snap, globalvariables),calibrationshot_energy) for snap in snapshots])
+    snapshots = cp.array([realtofourier_norm(zeropadframe(snap, globalvariables),calibrationshot_energy) for snap in snapshots]).astype(float)
 
     snapshots = calculateforces(snapshots)
     if timeperframe > 1:
-        interpolated_snapshots = cp.zeros((num_snapshots + (num_snapshots - 1) * (timeperframe - 1), numpix_real), dtype=AWGwaveform.dtype)
+        interpolated_snapshots = cp.zeros((num_snapshots + (num_snapshots - 1) * (timeperframe - 1), numpix_real)).astype(float)
         interpolated_snapshots[::timeperframe] = snapshots
         
         for i in range(1, timeperframe):
             interpolated_snapshots[i::timeperframe] = (snapshots[:-1] * (timeperframe - i) + snapshots[1:] * i) / timeperframe
         
         if filterOn:
-            interpolated_snapshots = cp.array([removeleftside(snap) for snap in interpolated_snapshots])
+            interpolated_snapshots = cp.array([removeleftside(snap) for snap in interpolated_snapshots]).astype(float)
         return interpolated_snapshots* rescalingfactor/ pixelsize_fourier # Add pixelsize_fourier for derivative rescaling
     
     if filterOn: 
-        snapshots = cp.array([removeleftside(snap) for snap in snapshots])
+        snapshots = cp.array([removeleftside(snap) for snap in snapshots]).astype(float)
 
     return snapshots* rescalingfactor/ pixelsize_fourier
 
@@ -375,7 +376,7 @@ def retrievepotentials(AWGwaveform, globalvariables, timeperframe = 1, filterOn=
     strides = (AWGwaveform.strides[0] * timeperframe, AWGwaveform.strides[0])
     shape = (num_snapshots, numpix_frame)
     snapshots = as_strided(AWGwaveform, shape=shape, strides=strides)    
-    snapshots = cp.array([realtofourier_norm(zeropadframe(snap, globalvariables),calibrationshot_energy) for snap in snapshots])
+    snapshots = cp.array([realtofourier_norm(zeropadframe(snap, globalvariables),calibrationshot_energy) for snap in snapshots]).astype(float)
 
 
     if timeperframe > 1:
@@ -441,8 +442,6 @@ def montecarlo(forces, globalvariables, initialdistribution, atommass):
     
     # Need to convert force from units of meters to units of pixels to make things computationally efficient
     
-
-
     ddx = forces / atommass # m/s^2
     x0 = tocupy(initialdistribution[0]) # Right now its in pixels
     dx0 = tocupy(initialdistribution[1]) # Right now its in m/s
@@ -766,7 +765,7 @@ def analyze_survivalprobability(xout, finalposition, gaussianwidth, globalvariab
     # Count the number of values within the bounds
     count_within_bounds = np.sum((xout >= lower_bound) & (xout <= upper_bound))
     # Calculate the percentage
-    percentage_within_bounds = (count_within_bounds / xout.size) * 100
+    percentage_within_bounds = count_within_bounds / len(xout)
     
     return percentage_within_bounds
 
@@ -996,3 +995,102 @@ def init_opt_waveformfitFourierVariant(AWGinitguess,freqres, ampres, phaseres, g
 
 
     return
+
+
+
+# Opt: Legendre
+
+
+def fit_legendre_polynomial(x, y, degree):
+    """
+    Fits a Legendre polynomial to the given data.
+    
+    Parameters:
+    x (array-like): The x-coordinates of the data points.
+    y (array-like): The y-coordinates of the data points.
+    degree (int): The degree of the Legendre polynomial.
+    
+    Returns:
+    Legendre: The fitted Legendre polynomial.
+    """
+    # Fit the Legendre polynomial
+    coeffs = Legendre.fit(x, y, degree).convert().coef
+    
+    # Create a Legendre object with the coefficients
+    legendre_poly = Legendre(coeffs)
+    
+    return legendre_poly
+
+def init_opt_waveformfitLegendre(AWGinitguess,degree, globalvariables):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+    
+    AWGwaveform = cp.zeros(len(AWGinitguess))
+    AWGwaveform[0:numpix_frame] = AWGinitguess[0:numpix_frame]
+    AWGwaveform[-numpix_frame:] = AWGinitguess[-numpix_frame:]
+    
+    optimizationsection = AWGinitguess[numpix_frame:-numpix_frame]
+    optimizationspace = cp.linspace(-1,1,len(optimizationsection))
+    
+    startfrequency = positionstofourier(startlocation, 0, globalvariables)[0] - numpix_real // 2
+    endfrequency = positionstofourier(endlocation, 0, globalvariables)[0] - numpix_real // 2
+
+    
+    fitted_legendre = fit_legendre_polynomial(tonumpy(optimizationspace), tonumpy(optimizationsection), degree)
+    fitted_section = fitted_legendre(optimizationspace)
+    max_error = np.max(np.abs(optimizationsection - fitted_section))
+    print("Maximum error:", max_error)
+    
+    AWGwaveform[numpix_frame:-numpix_frame] = fitted_section
+    
+    return tocupy(AWGwaveform), tocupy(fitted_legendre.coef)
+
+def opt_atomsurvival_Legendre(fittedwaveform, fittedcoefficients, inittemperature, globalvariables):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+    
+    AWGwaveform = fittedwaveform.copy()
+    AWGwave_template = tonumpy(fittedwaveform.copy())
+    AWGwaveform_expresponse = exponentialphaseresponse(fittedwaveform)
+    optimizationsection = AWGwaveform_expresponse[numpix_frame:-numpix_frame]
+    optimizationspace = cp.linspace(-1,1,len(optimizationsection))
+    
+    initial_distributions = initdistribution_MaxwellBoltzmann(num_particles, inittemperature, 1e-8, atommass, globalvariables)
+    shotlast = realtofourier(zeropadframe(AWGwaveform_expresponse[-numpix_frame:], globalvariables))
+    gaussianwidth = get_gaussianwidth_1d(tonumpy(zoomin((shotlast), 2)))
+    plt.plot(tonumpy((shotlast)))
+    plt.show()
+    print(gaussianwidth)
+    endtweezerlocation = get_gaussiancenter_1d((shotlast))
+    print(endtweezerlocation)
+    print(len(initial_distributions[0]))
+    
+    def objective_survivalLegendre(params):
+        legendre_poly = Legendre(params)
+        reconstructed_waveform = legendre_poly(tonumpy(optimizationspace))
+        AWGwave_template[numpix_frame:-numpix_frame] = reconstructed_waveform
+        AWGwave_test = exponentialphaseresponse(tocupy(AWGwave_template))
+        print("waveform made")
+        forces = retrieveforces(AWGwave_test, globalvariables, 10, True)
+        print("forces made")
+        xout, vout, accel = montecarlo(forces, globalvariables, initial_distributions, atommass)
+        print("xout retrieved", len(xout))
+        survivalprobability = analyze_survivalprobability(xout, endtweezerlocation, gaussianwidth, globalvariables)
+        print("survivalprobability retrieved")
+
+        print(survivalprobability)
+        return 1 - survivalprobability
+
+    initial_guess = fittedcoefficients
+    
+    # result = minimize(objective_survivalLegendre, tonumpy(initial_guess), method='Nelder-Mead', tol=1e-2,
+    #     options={'maxfev ':1, 'maxiter':0, 'xtol':1e-2,'ftol':1e-2})
+
+    result = minimize(objective_survivalLegendre,tonumpy(initial_guess),method='Powell',options={'disp': True,'maxfev':100,'maxiter':1, 'xtol': 1e-2, 'ftol': 1e-2})
+    
+
+    optimized_coefficients= result.x
+
+    fitted_legendrepoly = Legendre(optimized_coefficients)
+    AWGwaveform[numpix_frame:-numpix_frame] = tocupy(fitted_legendrepoly(tonumpy(optimizationspace)))
+    
+    return AWGwaveform, optimized_coefficients, AWGwave_template
+
