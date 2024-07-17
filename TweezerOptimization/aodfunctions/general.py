@@ -742,6 +742,30 @@ def plot_arrays(arrays, titles=None, subplot_figsize=(5, 5)):
     plt.tight_layout()
     plt.show()
 
+
+## Plot potentials (or forces) at multiple snapshots in time
+def plot_potentials_snapshots(potentials, numsnapshots, globalvariables, timeperframe=1, filterOn=True):
+    """
+    Plot the potentials at multiple snapshots in time.
+    
+    Parameters:
+    potentials (cp.ndarray): Array of potentials at each snapshot.
+    numsnapshots (int): Number of snapshots to plot.
+    globalvariables (dict): A dictionary of global variables.
+    timeperframe (int, optional): Number of frames per snapshot. Default is 1.
+    filterOn (bool, optional): Whether to apply a filter to the snapshots. Default is True.
+    """
+    # Extract the relevant snapshots
+    snapshots = potentials[:numsnapshots * timeperframe]
+    
+    # Filter the snapshots if necessary
+    if filterOn:
+        snapshots = cp.array([(snap) for snap in snapshots])
+    
+    # Plot the snapshots
+    plot_arrays(snapshots, titles=[f'Snapshot {i+1}' for i in range(numsnapshots)])
+
+
 def analyze_survivalprobability(xout, finalposition, gaussianwidth, globalvariables):
     """
     Calculate the percentage of values in xout that are within 1 Gaussian width of the final position.
@@ -1094,3 +1118,12 @@ def opt_atomsurvival_Legendre(fittedwaveform, fittedcoefficients, inittemperatur
     
     return AWGwaveform, optimized_coefficients, AWGwave_template
 
+
+
+
+# Analysis: Compare the optimized and non-optimized versions
+
+## Case 1: Fixed distance, get best atom survival for movement times. 
+
+
+## Case 2: Fixed movement time, optimized distances.
