@@ -744,26 +744,46 @@ def plot_arrays(arrays, titles=None, subplot_figsize=(5, 5)):
 
 
 ## Plot potentials (or forces) at multiple snapshots in time
-def plot_potentials_snapshots(potentials, numsnapshots, globalvariables, timeperframe=1, filterOn=True):
+def plot_snapshots(frames, numsnapshots, globalvariables, figuresize = (10,6),filterOn=True):
     """
-    Plot the potentials at multiple snapshots in time.
+    Plot the frames of an input array at multiple points in time. Final graph has all the plots overlaid.
     
     Parameters:
-    potentials (cp.ndarray): Array of potentials at each snapshot.
-    numsnapshots (int): Number of snapshots to plot.
+    frames (cp.ndarray): Array of frames, each of which contains a 1D array representing a snapshot.
+    numsnapshots (int): Number of snapshots to plot, evenly distributed throughout the frames array.
     globalvariables (dict): A dictionary of global variables.
-    timeperframe (int, optional): Number of frames per snapshot. Default is 1.
-    filterOn (bool, optional): Whether to apply a filter to the snapshots. Default is True.
+    filterOn (bool, optional): Whether to apply an xlim filter to the snapshots. Default is True.
     """
-    # Extract the relevant snapshots
-    snapshots = potentials[:numsnapshots * timeperframe]
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+
+    # Convert cupy array to numpy array for compatibility with matplotlib
+    frames = tonumpy(frames)
     
-    # Filter the snapshots if necessary
+    # Calculate the indices for the snapshots to plot
+    indices = np.linspace(0, len(frames) - 1, numsnapshots, dtype=int)
+    
+    plt.figure(figsize=figuresize)
+    
+    for idx in indices:
+        snapshot = frames[idx]
+        
+        # Plot each snapshot
+        plt.plot(snapshot, label=f'Time {idx * timestep*10**6} us')
+    
     if filterOn:
-        snapshots = cp.array([(snap) for snap in snapshots])
+        # Apply xlim filter based on global variables
+        xlim_min = positionstofourier(startlocation, 0, globalvariables)[0] - 50
+        xlim_max = positionstofourier(endlocation, 0, globalvariables)[0] + 50
+        plt.xlim(xlim_min, xlim_max)
     
-    # Plot the snapshots
-    plot_arrays(snapshots, titles=[f'Snapshot {i+1}' for i in range(numsnapshots)])
+    plt.xlabel('Position')
+    plt.ylabel('Intensity')
+    plt.title('Snapshots Over Time')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.show()
+
 
 
 def analyze_survivalprobability(xout, finalposition, gaussianwidth, globalvariables):
@@ -1119,7 +1139,64 @@ def opt_atomsurvival_Legendre(fittedwaveform, fittedcoefficients, inittemperatur
     return AWGwaveform, optimized_coefficients, AWGwave_template
 
 
+def opt_forces_Legendre(fittedwaveform, desiredpositions, desiredacceleration, fittedcoefficients, globalvariables):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+    
+    AWGwaveform = fittedwaveform.copy()
+    AWGwave_template = tonumpy(fittedwaveform.copy())
+    AWGwaveform_expresponse = exponentialphaseresponse(fittedwaveform)
+    optimizationsection = AWGwaveform_expresponse[numpix_frame:-numpix_frame]
+    optimizationspace = cp.linspace(-1,1,len(optimizationsection))
 
+    forces = cp.zeros(len(fittedwaveform) - numpix_frame + 1)
+    targetaccelerations = cp.zeros(len(forces))
+    targetpositions = cp.zeros(len(forces))
+    targetaccelerations[:len(desiredacceleration)] = desiredacceleration
+    targetaccelerations[-numpix_frame-1:] = desiredacceleration[-1]
+    targetaccelerations = targetaccelerations / cp.max(targetaccelerations)
+    
+    targetpositions[:len(desiredacceleration)] = desiredpositions
+    targetpositions[-numpix_frame-1:] = desiredpositions[-1]
+
+    
+    shotlast = realtofourier(zeropadframe(AWGwaveform_expresponse[-numpix_frame:], globalvariables))
+    gaussianwidth = get_gaussianwidth_1d(tonumpy(zoomin((shotlast), 2)))
+    
+    def evaluateforces(forces, targetpositions, targetaccelerations, globalvariables):
+        maximumforceatpositions = [cp.max(cp.abs(forces[i][int(targetpositions[i] - gaussianwidth): int(targetpositions[i] + gaussianwidth)])) for i in range(len(forces))]
+        maximumaccelerationatpositions = cp.array(maximumforceatpositions)
+        maximumaccelerationatpositions = maximumaccelerationatpositions / cp.max(maximumaccelerationatpositions)
+        intensityweight = len(forces) / cp.sum(maximumaccelerationatpositions)
+        uniformityweight = cp.sum(cp.abs(targetaccelerations) - cp.abs(maximumaccelerationatpositions))
+        print(uniformityweight)
+        return intensityweight * uniformityweight
+    
+    def objective_survivalLegendre(params):
+        legendre_poly = Legendre(params)
+        reconstructed_waveform = legendre_poly(tonumpy(optimizationspace))
+        AWGwave_template[numpix_frame:-numpix_frame] = reconstructed_waveform
+        AWGwave_test = exponentialphaseresponse(tocupy(AWGwave_template))
+        print("waveform made")
+        forces = retrieveforces(AWGwave_test, globalvariables, 10, True)
+        print("forces made")
+        metric = evaluateforces(forces, targetpositions, targetaccelerations, globalvariables) * 10**(-20)
+        return metric
+
+
+    initial_guess = fittedcoefficients
+    
+    # result = minimize(objective_survivalLegendre, tonumpy(initial_guess), method='Nelder-Mead', tol=1e-2,
+    #     options={'maxfev ':1, 'maxiter':0, 'xtol':1e-2,'ftol':1e-2})
+
+    result = minimize(objective_survivalLegendre,tonumpy(initial_guess),method='Nelder-Mead',options={'disp': True,'maxfev':100,'maxiter':1, 'xtol': 1e-2, 'ftol': 1e-2})
+    
+
+    optimized_coefficients= result.x
+
+    fitted_legendrepoly = Legendre(optimized_coefficients)
+    AWGwaveform[numpix_frame:-numpix_frame] = tocupy(fitted_legendrepoly(tonumpy(optimizationspace)))
+    
+    return AWGwaveform, optimized_coefficients, AWGwave_template
 
 # Analysis: Compare the optimized and non-optimized versions
 
