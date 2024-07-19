@@ -1204,3 +1204,11 @@ def opt_forces_Legendre(fittedwaveform, desiredpositions, desiredacceleration, f
 
 
 ## Case 2: Fixed movement time, optimized distances.
+
+
+
+
+
+
+
+### Multiple tweezer movement:
