@@ -44,3 +44,21 @@ from itertools import product
 import pickle
 import gzip
 import shutil
+
+cupyon=True
+
+try:
+    import cupy as cp
+    import cupyx.scipy.fft as cpfft
+    import cupyx.scipy.ndimage
+    from cupyx.scipy.ndimage import gaussian_filter1d as cp_gaussian_filter1d
+    from cupyx.scipy.ndimage import gaussian_filter as cp_gaussian_filter
+    from cupyx.scipy.ndimage import affine_transform as cp_affine_transform
+except ImportError:
+    cp = np
+    cpfft = spfft
+    cp_gaussian_filter1d = sp_gaussian_filter1d
+    cp_gaussian_filter = sp_gaussian_filter
+    cp_affine_transform = sp_affine_transform
+    cupyon = False
+    print("cupy not installed. Using numpy.")
