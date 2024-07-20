@@ -246,6 +246,8 @@ def weightintensity_lukin(target, target_prev, std_int, target_im):
 #     return (w)
 
 
+
+
 def discretize_phase(phase):
     phase=np.round((phase+np.pi)*255/(2*np.pi))
     return(phase)

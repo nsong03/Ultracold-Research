@@ -395,6 +395,27 @@ def create_phasemap(kvectors, offsets, wavetype=makesawtooth, opton=False, optty
 
 # Tweezer generation
 
+def tonumpy(array):
+    '''Checks if the input array is a CuPy array and converts it to a NumPy array if necessary.'''
+    if isinstance(array, np.ndarray):
+        return array  # Convert CuPy array to NumPy array
+    elif isinstance(array, cp.ndarray):
+        return cp.asnumpy(array)  # Already a NumPy array, return as is
+    else:
+        raise TypeError("Input is neither a NumPy nor a CuPy array")
+
+def tocupy(array):
+    '''Checks if the input array is a NumPy array and converts it to a CuPy array if necessary.'''
+    if isinstance(array, np.ndarray):
+        return cp.asarray(array)  # Convert NumPy array to CuPy array
+    elif isinstance(array, cp.ndarray):
+        return array  # Already a CuPy array, return as is
+    else:
+        raise TypeError("Input is neither a NumPy nor a CuPy array")
+
+
+
+
 def createtweezers_grid(blankinput, spacing, xnum, ynum, xoffset=100):
     """Creates delta function at tweezer locations. blankinput is a blank input array to 
     initialize tweezer in, spacing is the pixel spacing between tweezers, and xnum and ynum are the 
@@ -536,6 +557,44 @@ def applydiffractionlimited(tweezerarray, fourierplanesize, slmpixelsize, wavele
     weightedtweezers = intensity_array * tweezerarray
 
     return weightedtweezers, intensity_array
+
+def apply_local_gaussian_filter(array, sigma, R):
+    """
+    Apply a Gaussian filter with given sigma to regions of interest in a 2D numpy array.
+    
+    Parameters:
+    - array: 2D numpy array where regions of interest have value 1.
+    - sigma: Standard deviation for Gaussian kernel.
+    - R: Pixel radius within which to apply the Gaussian filter.
+    
+    Returns:
+    - filtered_array: 2D numpy array with Gaussian filters applied to regions of interest.
+    """
+    # Create an output array to store the filtered result
+    filtered_array = np.zeros_like(array)
+    
+    # Get the coordinates of points of interest
+    points_of_interest = np.argwhere(array > 0)
+    
+    for point in points_of_interest:
+        x, y = point
+        
+        # Define the local region around the point within radius R
+        x_min = max(x - R, 0)
+        x_max = min(x + R + 1, array.shape[0])
+        y_min = max(y - R, 0)
+        y_max = min(y + R + 1, array.shape[1])
+        
+        # Extract the local region
+        local_region = array[x_min:x_max, y_min:y_max].copy()
+        
+        # Apply the Gaussian filter to the local region
+        filtered_local_region = gaussian_filter(local_region, sigma=sigma)
+        
+        # Add the filtered local region back into the output array
+        filtered_array[x_min:x_max, y_min:y_max] += filtered_local_region
+    
+    return filtered_array
 
 def derivephase(costfunction, targetintensity, initialphase, iterations, magnification = 1, harmonicremoval = False, badharmonics_pixelcoords=[], beamtype="Constant", custombeamamplitude = 1, sigma=1, mu = 1):
     """All inputs are assumed to be of the same dimensionality, 1300 by 1300. Note that magnification adds on to the target, so
@@ -698,6 +757,8 @@ def derivephase_fixed(costfunction1, costfunction2, targetintensity2, initialpha
     readout.set_all(readout_slmphase, fourierangle, weights, weights_previous, outputbeam, stdint, targetintensity_out, uniformtarget, errors, labels)
     
     return readout
+
+
 
 def simulatefourier(tweezerphase, magnification=3, beamtype="Constant", sigma=1, mu=1):
     numpixels = cp.shape(tweezerphase)[0]
