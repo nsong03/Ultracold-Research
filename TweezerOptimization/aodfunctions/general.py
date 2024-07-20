@@ -90,6 +90,35 @@ def initpath_sinsqramp(globalvariables):
     
     return positions,velocities,accelerations, jerks, time
 
+def initpath_sinsqramp(startposition, endposition, globalvariables):
+    '''Initializes positions throughout the movementtime with an acceleration profile that is a linear ramp up for half the time then down for half the time that moves
+    the atom from startlocation to endlocation.'''
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+
+    
+    # Define the number of time steps
+    num_steps = 1000
+    total_time = movementtime
+    time = np.linspace(0, total_time, num_steps)
+    
+    # Initial and final positions
+    initial_position = startposition * 10**6  # Convert to micrometers
+    final_position = endposition * 10**6  # Convert to micrometers
+    D = final_position - initial_position
+    
+    positions = np.sin(np.linspace(0, np.pi/2, num_steps))**2 * D + initial_position
+    velocities = np.gradient(positions, time)
+    accelerations = np.gradient(velocities, time)
+    jerks = np.gradient(accelerations, time)
+    
+    positions = positions / 10**6
+    velocities = velocities / 10**6
+    accelerations = accelerations / 10**6
+    jerks = jerks / 10**6
+    
+    return positions,velocities,accelerations, jerks, time
+
+
 def initpath_minimizejerk(globalvariables):
     '''Initializes positions throughout the movementtime that minimizes jerk.'''
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
