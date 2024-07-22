@@ -62,7 +62,7 @@ def initpath_linearramp(globalvariables):
     return positions,velocities,accelerations, jerks, time
 
 
-def initpath_sinsqramp(globalvariables):
+def initpath_sinsqramp_general(globalvariables):
     '''Initializes positions throughout the movementtime with an acceleration profile that is a linear ramp up for half the time then down for half the time that moves
     the atom from startlocation to endlocation.'''
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
@@ -867,7 +867,7 @@ def analyze_fixeddistance_nonoptimized(movementtimes, initialtemperatures, respo
                 elif guesstype == "MinJerk":
                     optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_minimizejerk(globalvariables)
                 elif guesstype == "SinSq":
-                    optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_sinsqramp(globalvariables)
+                    optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_sinsqramp_general(globalvariables)
                     
                 fourierpixels, time = positionstofourier(optimized_position, time, globalvariables)
                 expanded_position, expanded_time = expand_position_array(time, fourierpixels, globalvariables)
@@ -900,7 +900,7 @@ def analyze_fixeddistance_nonoptimized(movementtimes, initialtemperatures, respo
                 elif guesstype == "MinJerk":
                     optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_minimizejerk(globalvariables)
                 elif guesstype == "SinSq":
-                    optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_sinsqramp(globalvariables)
+                    optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_sinsqramp_general(globalvariables)
                 
                 if responsetype == "Cosine":
                     AWGinput = initguess_waveform(AWGwaveform, optimized_position, time, globalvariables)
@@ -925,6 +925,86 @@ def analyze_fixeddistance_nonoptimized(movementtimes, initialtemperatures, respo
                 results[i, j] = [np.array(survivalprobability),tonumpy(xout),tonumpy(vout)]
 
     return results
+
+def analyze_fixeddistance_optimized(movementtimes, initialtemperatures, responsetype="Cosine",calctype="Ideal", guesstype = "Linear", timeperframe=10, globalvariables=globalvariables):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+
+    # Calculate the number of movement times and initial temperatures
+    num_movementtimes = len(movementtimes)
+    num_initialtemperatures = len(initialtemperatures)
+    
+    # Initialize arrays to store the results
+    results = np.empty((num_movementtimes, num_initialtemperatures), dtype=object)
+    
+    # Iterate over each movement time and initial temperature
+    for i in range(num_movementtimes):
+        for j in range(num_initialtemperatures):
+            movementtime = movementtimes[i]
+            numpix_waveform = int(movementtime / cycletime * numpix_frame) + 2* numpix_frame # Why is there a 2* cycletime here? To add on the initial and final stages of the AOD. We will only change the portion in the movement time and fix the ends.
+            AWGwaveform = cp.zeros(numpix_waveform)
+            globalvariables = [aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients]
+            
+            # Perform the analysis for each combination of movement time and initial temperature
+            if calctype =="Not Ideal":
+                if guesstype == "Linear":
+                    optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_linearramp(globalvariables)
+                elif guesstype == "MinJerk":
+                    optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_minimizejerk(globalvariables)
+                elif guesstype == "SinSq":
+                    optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_sinsqramp_general(globalvariables)
+                    
+                fourierpixels, time = positionstofourier(optimized_position, time, globalvariables)
+                expanded_position, expanded_time = expand_position_array(time, fourierpixels, globalvariables)
+                
+                if responsetype == "Cosine":
+                    AWGinput = initguess_waveform(AWGwaveform, optimized_position, time, globalvariables)
+                    AWGphase = cosinephaseresponse(AWGinput)                
+                elif responsetype =="Exponential":
+                    AWGinput = initguess_waveform(AWGwaveform, optimized_position, time, globalvariables)
+                    AWGphase = exponentialphaseresponse(AWGinput)     
+                    
+                shotlast = realtofourier(zeropadframe(AWGphase[-numpix_frame:], globalvariables))
+                gaussianwidth = get_gaussianwidth_1d(tonumpy(zoomin(removeleftside(shotlast), 2)))
+                endtweezerlocation = get_gaussiancenter_1d(removeleftside(shotlast))
+                fittedwaveform, fittedlegendre = init_opt_waveformfitLegendre(AWGinput, 1000, globalvariables)
+
+
+                optimizedwaveform, optimizedLegendre, AWGwave_template = opt_atomsurvival_Legendre(fittedwaveform, fittedlegendre, initialtemperatures[j], globalvariables)
+
+                survivalprobability, xout, vout = get_atomsurvivalfromwaveform(optimizedwaveform, initialtemperatures[j], timeperframe, globalvariables)
+                
+                # Store the result in the results array
+                results[i, j] = [np.array(survivalprobability),tonumpy(xout),tonumpy(vout)]
+                
+            elif calctype == "Ideal":
+                if guesstype == "Linear":
+                    optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_linearramp(globalvariables)
+                elif guesstype == "MinJerk":
+                    optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_minimizejerk(globalvariables)
+                elif guesstype == "SinSq":
+                    optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_sinsqramp_general(globalvariables)
+                
+                if responsetype == "Cosine":
+                    AWGinput = initguess_waveform(AWGwaveform, optimized_position, time, globalvariables)
+                    AWGphase = cosinephaseresponse(AWGinput)                
+                elif responsetype =="Exponential":
+                    AWGinput = initguess_waveform(AWGwaveform, optimized_position, time, globalvariables)
+                    AWGphase = exponentialphaseresponse(AWGinput)     
+                    
+                shotlast = realtofourier(zeropadframe(AWGphase[-numpix_frame:], globalvariables))
+                gaussianwidth = get_gaussianwidth_1d(tonumpy(zoomin(removeleftside(shotlast), 2)))
+                endtweezerlocation = get_gaussiancenter_1d(removeleftside(shotlast))
+                fittedwaveform, fittedlegendre = init_opt_waveformfitLegendre(AWGinput, 1000, globalvariables)
+
+
+                optimizedwaveform, optimizedLegendre, AWGwave_template = opt_atomsurvival_Legendre(fittedwaveform, fittedlegendre, initialtemperatures[j], globalvariables)
+
+                survivalprobability, xout, vout = get_atomsurvivalfromwaveform(optimizedwaveform, initialtemperatures[j], timeperframe, globalvariables)
+                
+                # Store the result in the results array
+                results[i, j] = [np.array(survivalprobability),tonumpy(xout),tonumpy(vout)]
+    return results
+
 
 
 def plots_fixeddistance(movementtimes, initialtemperatures, analysisout):
@@ -1167,6 +1247,19 @@ def opt_atomsurvival_Legendre(fittedwaveform, fittedcoefficients, inittemperatur
     
     return AWGwaveform, optimized_coefficients, AWGwave_template
 
+def get_atomsurvivalfromwaveform(AWGwaveform, initialtemperature, timeperframe, globalvariables):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+    shotlast = realtofourier(zeropadframe(AWGwaveform[-numpix_frame:], globalvariables))
+    gaussianwidth = get_gaussianwidth_1d(tonumpy(zoomin(removeleftside(shotlast), 2)))
+    endtweezerlocation = get_gaussiancenter_1d(removeleftside(shotlast))
+
+    forces = retrieveforces(AWGwaveform, globalvariables, timeperframe, True)
+    
+    initial_distributions = initdistribution_MaxwellBoltzmann(num_particles, initialtemperature, 1e-8, atommass, globalvariables)
+    xout, vout, accel = montecarlo(forces, globalvariables, initial_distributions, atommass)
+
+    survivalprobability = analyze_survivalprobability(xout, endtweezerlocation, gaussianwidth, globalvariables)
+    return survivalprobability, xout, vout
 
 def opt_forces_Legendre(fittedwaveform, desiredpositions, desiredacceleration, fittedcoefficients, globalvariables):
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
