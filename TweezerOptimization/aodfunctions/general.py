@@ -838,7 +838,7 @@ def analyze_survivalprobability(xout, finalposition, gaussianwidth, globalvariab
     # Count the number of values within the bounds
     count_within_bounds = np.sum((xout >= lower_bound) & (xout <= upper_bound))
     # Calculate the percentage
-    percentage_within_bounds = count_within_bounds / len(xout)
+    percentage_within_bounds = count_within_bounds / len(xout) * 100
     
     return percentage_within_bounds
 
@@ -967,11 +967,9 @@ def analyze_fixeddistance_optimized(movementtimes, initialtemperatures, response
                 gaussianwidth = get_gaussianwidth_1d(tonumpy(zoomin(removeleftside(shotlast), 2)))
                 endtweezerlocation = get_gaussiancenter_1d(removeleftside(shotlast))
                 fittedwaveform, fittedlegendre = init_opt_waveformfitLegendre(AWGinput, 1000, globalvariables)
-
-
                 optimizedwaveform, optimizedLegendre, AWGwave_template = opt_atomsurvival_Legendre(fittedwaveform, fittedlegendre, initialtemperatures[j], globalvariables)
-
-                survivalprobability, xout, vout = get_atomsurvivalfromwaveform(optimizedwaveform, initialtemperatures[j], timeperframe, globalvariables)
+                optimizedwaveform_expresponse = exponentialphaseresponse(optimizedwaveform)
+                survivalprobability, xout, vout = get_atomsurvivalfromwaveform(optimizedwaveform_expresponse, initialtemperatures[j], timeperframe, globalvariables)
                 
                 # Store the result in the results array
                 results[i, j] = [np.array(survivalprobability),tonumpy(xout),tonumpy(vout)]
@@ -995,11 +993,9 @@ def analyze_fixeddistance_optimized(movementtimes, initialtemperatures, response
                 gaussianwidth = get_gaussianwidth_1d(tonumpy(zoomin(removeleftside(shotlast), 2)))
                 endtweezerlocation = get_gaussiancenter_1d(removeleftside(shotlast))
                 fittedwaveform, fittedlegendre = init_opt_waveformfitLegendre(AWGinput, 1000, globalvariables)
-
-
                 optimizedwaveform, optimizedLegendre, AWGwave_template = opt_atomsurvival_Legendre(fittedwaveform, fittedlegendre, initialtemperatures[j], globalvariables)
-
-                survivalprobability, xout, vout = get_atomsurvivalfromwaveform(optimizedwaveform, initialtemperatures[j], timeperframe, globalvariables)
+                optimizedwaveform_expresponse = exponentialphaseresponse(optimizedwaveform)
+                survivalprobability, xout, vout = get_atomsurvivalfromwaveform(optimizedwaveform_expresponse, initialtemperatures[j], timeperframe, globalvariables)
                 
                 # Store the result in the results array
                 results[i, j] = [np.array(survivalprobability),tonumpy(xout),tonumpy(vout)]
@@ -1209,26 +1205,16 @@ def opt_atomsurvival_Legendre(fittedwaveform, fittedcoefficients, inittemperatur
     initial_distributions = initdistribution_MaxwellBoltzmann(num_particles, inittemperature, 1e-8, atommass, globalvariables)
     shotlast = realtofourier(zeropadframe(AWGwaveform_expresponse[-numpix_frame:], globalvariables))
     gaussianwidth = get_gaussianwidth_1d(tonumpy(zoomin((shotlast), 2)))
-    plt.plot(tonumpy((shotlast)))
-    plt.show()
-    print(gaussianwidth)
     endtweezerlocation = get_gaussiancenter_1d((shotlast))
-    print(endtweezerlocation)
-    print(len(initial_distributions[0]))
-    
+
     def objective_survivalLegendre(params):
         legendre_poly = Legendre(params)
         reconstructed_waveform = legendre_poly(tonumpy(optimizationspace))
         AWGwave_template[numpix_frame:-numpix_frame] = reconstructed_waveform
         AWGwave_test = exponentialphaseresponse(tocupy(AWGwave_template))
-        print("waveform made")
         forces = retrieveforces(AWGwave_test, globalvariables, 10, True)
-        print("forces made")
         xout, vout, accel = montecarlo(forces, globalvariables, initial_distributions, atommass)
-        print("xout retrieved", len(xout))
         survivalprobability = analyze_survivalprobability(xout, endtweezerlocation, gaussianwidth, globalvariables)
-        print("survivalprobability retrieved")
-
         print(survivalprobability)
         return 1 - survivalprobability
 
