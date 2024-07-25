@@ -1320,6 +1320,16 @@ def opt_forces_Legendre(fittedwaveform, desiredpositions, desiredacceleration, f
     
     return AWGwaveform, optimized_coefficients, AWGwave_template
 
+
+
+
+
+
+
+
+
+
+
 # Analysis: Compare the optimized and non-optimized versions
 
 ## Case 1: Fixed distance, get best atom survival for movement times. 
