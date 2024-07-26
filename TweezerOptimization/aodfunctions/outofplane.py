@@ -2,18 +2,19 @@ from .dependencies import *
 from .settings import *
 from .general import *
 
-def snapshots_oop_potential(AWGframe_E, zoffstart, zoffend, numzframes, framesize, globalvariables):
-    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
-
-    # AWGframe_E should already have the fresnel lens phase profile added to it
-    z = cp.linspace(zoffstart, zoffend, numzframes) + focallength
-    E0 = bluestein_method()
-
-    for i in range(len(z)):
-        test = 0
 
 
-    return None
+
+
+
+
+
+
+
+
+
+
+
 
 
 
