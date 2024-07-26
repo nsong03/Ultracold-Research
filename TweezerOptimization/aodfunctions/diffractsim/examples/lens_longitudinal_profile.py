@@ -19,4 +19,4 @@ print(longitudinal_profile_rgb.shape)
 
 
 F.plot_longitudinal_profile_intensity(longitudinal_profile_E = longitudinal_profile_E, extent = extent, square_root = True)
-print(longitudinal_profile_E.shape)
+print(longitudinal_profile_E.shape) 

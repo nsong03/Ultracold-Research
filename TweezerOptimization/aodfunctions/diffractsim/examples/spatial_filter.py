@@ -19,7 +19,7 @@ F.propagate(50*cm)
 
 rgb = F.get_colors()
 F.plot_colors(rgb, xlim=[-2.5*mm,2.5*mm], ylim=[-2.5*mm,2.5*mm])
-
+ 
 
 F.add(CircularAperture(0.28*mm))
 F.propagate(50*cm)
