@@ -47,6 +47,8 @@ def montecarlo_3D(force_func, globalvariables, initialdistribution3D, atommass):
         dz_t1 = dz_t2
         z_t1 = z_t2
     return np.array([x_t1,y_t1,z_t1]), np.array([dx_t1,dy_t1,dz_t1]), np.array([ddx_t2,ddy_t2,ddz_t2])
+
+
 def heuristic_3D_potential(atom_loc,ideal_depth,trap_x,trap_rayleigh,trap_rad,trap_xfocalshift):
     [x,y,z] = atom_loc
     rad_y = trap_rad * np.sqrt(1+(z/trap_rayleigh)**2)
