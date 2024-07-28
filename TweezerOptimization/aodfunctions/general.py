@@ -680,6 +680,28 @@ def shift_tweezer_profile(tweezerprofile, positions):
     
     return shifted_profiles
 
+def array_1dto2d(arr, N):
+    """
+    Stacks a 1D array into a 2D array by repeating it N times along the rows.
+
+    Parameters:
+    arr (np.ndarray): The 1D array to be stacked.
+    N (int): The number of times to repeat the 1D array along the rows.
+
+    Returns:
+    np.ndarray: The resulting 2D array.
+    """
+    # Ensure the input is a 1D array
+    if arr.ndim != 1:
+        raise ValueError("Input array must be 1-dimensional")
+
+    # Use np.tile to repeat the array N times along a new axis
+    result = cp.tile(arr, (N, 1))
+    
+    return result
+
+
+
 # Visualization
 
 def removeleftside(arr):
@@ -1330,3 +1352,201 @@ def opt_forces_Legendre(fittedwaveform, desiredpositions, desiredacceleration, f
 
 
 ### Multiple tweezer movement:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# class EField:
+#     def __init__(self,  globalvariables):
+#         """
+#         Initializes the field, representing the cross-section profile of a plane wave
+
+#         Parameters
+#         ----------
+#         wavelength: wavelength of the plane wave
+#         extent_x: length of the rectangular grid 
+#         extent_y: height of the rectangular grid 
+#         Nx: horizontal dimension of the grid 
+#         Ny: vertical dimension of the grid 
+#         intensity: intensity of the field
+#         """
+#         aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+
+#         self.extent_x = numpix_frame * pixelsize_fourier
+#         self.dx = pixelsize_fourier
+
+#         self.x = cp.linspace(0, numpix_frame * pixelsize_fourier, numpix_frame) -numpix_frame * pixelsize_fourier / 2
+#         self.xx = self.x
+
+#         self.Nx = numpix_frame
+#         self.E = cp.zeros(numpix_frame) * cp.exp(1j * 0)
+#         self.λ = wavelength
+#         self.z = 0
+
+# def lens(flength, globalvariables):
+#     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+#     xx = cp.linspace(0, numpix_frame * pixelsize_fourier, numpix_frame) -numpix_frame * pixelsize_fourier / 2
+#     fresnellens = cp.exp(-1j * cp.pi / (wavelength * flength) * (xx**2))
+#     return fresnellens
+
+# def propogate_bluestein(self, E, dz, x_interval, globalvariables, scalefactor = 1):
+#     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+#     self.z += dz
+#     λ = wavelength
+
+
+#     E = bluestein_fft(E * cp.exp(1j * 2*cp.pi/λ /(2*dz) *(self.xx**2)), 
+#                     f0=x_interval[0] / (dz*λ), f1=x_interval[1] / (dz*λ), fs=1/self.dx, M=numpix_frame, axis=0)
+
+#     dfx = 1/(self.Nx*self.dx)
+
+#     fx_zfft = bluestein_fftfreq(x_interval[0]/ (dz*λ),x_interval[1]/ (dz*λ), self.Nx)
+#     dfx_zfft = fx_zfft[1]-fx_zfft[0]
+
+
+#     nn = (cp.linspace(0,(self.Nx-1),self.Nx)*dfx_zfft/dfx )
+#     factor = (self.dx* cp.exp(cp.pi*1j * (nn)))
+
+
+#     self.x = fx_zfft*(dz*λ)
+
+#     self.xx = self.x
+
+#     self.dx = self.x[1] - self.x[0]
+
+#     self.extent_x = self.x[1] - self.x[0] + self.dx
+#     E = E*factor * cp.exp(1j*cp.pi/(λ*dz) * (self.xx**2)  +   1j*2*cp.pi/λ * dz ) / (1j*dz*λ)
+#     self.E = E
+
+#     return E
+
+# def bluestein_fft(x, axis, f0, f1, fs, M):
+#     """
+#     bluestein FFT function to evaluate the DFT
+#     coefficients for the rows of an array in the frequency range [f0, f1]
+#     using N points.
+    
+#     Parameters
+#     ----------
+
+#     x: array to evaluate DFT (along last dimension of array)
+#     f0: lower bound of frequency bandwidth
+#     f1: upper bound of frequency bandwidth
+#     fs: sampling frequency
+#     M: number of points used when evaluating the 1DFT (N <= signal length)
+#     axis: axis along which the fft's are computed (defaults to last axis)
+
+
+#     Reference: 
+    
+#     Leo I. Bluestein, “A linear filtering approach to the computation of the discrete Fourier transform,” 
+#     Northeast Electronics Research and Engineering Meeting Record 10, 218-219 (1968).
+#     """
+#     # Swap axes
+#     x = cp.swapaxes(a=x, axis1=axis, axis2=-1)
+
+#     # Normalize frequency range
+#     phi0 = 2.0 * cp.pi * f0 / fs
+#     phi1 = 2.0 * cp.pi * f1 / fs
+#     d_phi = (phi1 - phi0) / (M - 1)
+
+#     # Determine shape of signal
+#     A = cp.exp(1j * phi0)
+#     W = cp.exp(-1j * d_phi)
+#     X = chirpz(x=x, A=A, W=W, M=M)
+
+#     return cp.swapaxes(a=X, axis1=axis, axis2=-1)
+
+# def bluestein_fftfreq(f0, f1, M):
+#     """
+#     Return frequency values of the bluestein FFT
+#     coefficients returned by bluestein_fft().
+    
+#     Parameters
+#     ----------
+
+#     f0: lower bound of frequency bandwidth
+#     f1: upper bound of frequency bandwidth
+#     fs: sampling rate
+    
+#     """
+
+#     df = (f1 - f0) / (M - 1)
+#     return cp.arange(M) * df + f0
+
+# def chirpz(x, A, W, M):
+#     """
+    
+#     Parameters
+#     ----------
+
+#     x: array to evaluate chirp-z transform (along last dimension of array)
+#     A: starting point of chirp-z contour
+#     W: controls frequency sample spacing and shape of the contour
+#     M: number of frequency sample points
+
+#     Reference:
+#     Rabiner, L.R., R.W. Schafer and C.M. Rader. The Chirp z-Transform
+#     Algorithm. IEEE Transactions on Audio and Electroacoustics,
+#     AU-17(2):86--92, 1969
+
+#     Originally Written by Stefan van der Walt: 
+#     http://www.mail-archive.com/numpy-discussion@scipy.org/msg01812.html
+    
+#     The discrete z-transform,
+#     X(z) = \sum_{n=0}^{N-1} x_n z^{-n}
+#     is calculated at M points,
+#     z_k = AW^-k, k = 0,1,...,M-1
+#     for A and W complex, which gives
+#     X(z_k) = \sum_{n=0}^{N-1} x_n z_k^{-n}
+#     """
+
+#     x = cp.asarray(x, dtype=complex)
+#     P = x.shape
+
+#     N = P[-1]
+#     L = int(2 ** cp.ceil(cp.log2(M + N - 1)))
+
+#     n = cp.arange(N, dtype=float)
+#     y = cp.power(A, -n) * cp.power(W, n ** 2 / 2.)
+#     y = cp.tile(y, (P[0], 1)) * x
+#     Y = cp.fft.fft(y, L)
+
+#     n = cp.arange(L, dtype=float)
+#     v = cp.zeros(L, dtype=complex)
+
+#     v[:M] = cp.power(W, -n[:M] ** 2 / 2.)
+#     v[L-N+1:] = cp.power(W, -(L - n[L-N+1:]) ** 2 / 2.)
+
+#     V = cp.fft.fft(v)
+
+#     g = cp.fft.ifft(cp.tile(V, (P[0], 1)) * Y)[:,:M]
+#     k = cp.arange(M)
+#     g = g * cp.tile(cp.power(W, k ** 2 / 2.), (P[0],1))
+
+#     # Return result
+#     return g
