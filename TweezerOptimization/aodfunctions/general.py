@@ -464,6 +464,42 @@ def initdistribution_MaxwellBoltzmann(num_particles, temperature, positionstd, a
     
     return positions, velocities
 
+# update MB distrib initiatilization
+ # def initdistribution_MaxwellBoltzmann(num_particles, temperature, positionstd, atommass, globalvariables):
+    """
+    Generates a Maxwell-Boltzmann distribution of particles' positions and velocities. In units of fourier pixels / timestep
+
+    Parameters:
+    - num_particles (int): Number of particles.
+    - mass (float): Mass of each particle.
+    - temperature (float): Temperature in Kelvin.
+    - kb (float, optional): Boltzmann constant. Default is 1.38e-23 J/K.
+
+    Returns:
+    - positions (np.ndarray): Array of positions of particles.
+    - velocities (np.ndarray): Array of velocities of particles.
+    """
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+       
+    x0, time = positionstofourier(startlocation,0, globalvariables)
+    
+    # Standard deviation for velocity from Maxwell-Boltzmann distribution
+    kb = 1.38*10**(-23)
+    energy = 1/2 * kb * temperature
+    std_velocity = np.sqrt(2 * energy / atommass)
+    std_velocity = (std_velocity) # velocity in terms of pixels / timestep
+    positionstd = np.sqrt(2 * energy / atommass )/ trapfreq  # pixel position
+    
+    std_position = positionstd / pixelsize_fourier # pixel position
+    # Generating velocities
+    velocities = np.random.normal(0, std_velocity, (num_particles,1)) # in units of pixels/s
+    velocities[velocities > 2* np.std(velocities)] *= 0.5
+    # Generating positions (assuming normal distribution centered at 0 with some spread) # in units of pixels
+    positions = np.random.normal(0, std_position, (num_particles,1)) +x0
+    
+    return positions, velocities
+
+
 def montecarlo(forces, globalvariables, initialdistribution, atommass):
     ''' Monte Carlo simulation of a distribution of particles in a potential landscape.'''
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
@@ -699,6 +735,60 @@ def array_1dto2d(arr, N):
     result = cp.tile(arr, (N, 1))
     
     return result
+
+def gaussian_2d(coords, x0, y0, sigma_x, sigma_y, amplitude, offset):
+    """
+    2D Gaussian function.
+    
+    Parameters:
+    coords: tuple of 2D coordinate arrays (x, y)
+    x0, y0: center of the Gaussian
+    sigma_x, sigma_y: standard deviations in x and y directions
+    amplitude: peak amplitude
+    offset: offset
+    
+    Returns:
+    2D Gaussian value at (x, y)
+    """
+    x, y = coords
+    return offset + amplitude * np.exp(-(((x - x0) ** 2) / (2 * sigma_x ** 2) + ((y - y0) ** 2) / (2 * sigma_y ** 2)))
+
+def fit_gaussian_2d(intensity_array):
+    """
+    Fit a 2D Gaussian to a 2D numpy intensity array and return the horizontal and vertical widths.
+    
+    Parameters:
+    intensity_array (numpy.ndarray): 2D intensity array
+    
+    Returns:
+    tuple: (sigma_x, sigma_y) where sigma_x and sigma_y are the standard deviations (widths) in x and y directions
+    """
+    # Create coordinate arrays
+    x = np.linspace(0, intensity_array.shape[1] - 1, intensity_array.shape[1])
+    y = np.linspace(0, intensity_array.shape[0] - 1, intensity_array.shape[0])
+    x, y = np.meshgrid(x, y)
+    
+    # Initial guess for the parameters based on maximum intensity
+    amplitude = intensity_array.max()
+    offset = intensity_array.min()
+    y0, x0 = np.unravel_index(np.argmax(intensity_array), intensity_array.shape)
+    sigma_x = intensity_array.shape[1] / 10  # Starting guess
+    sigma_y = intensity_array.shape[0] / 10  # Starting guess
+    
+    initial_guess = (x0, y0, sigma_x, sigma_y, amplitude, offset)
+    
+    # Flatten the arrays for fitting
+    x_data = x.ravel()
+    y_data = y.ravel()
+    intensity_data = intensity_array.ravel()
+    
+    # Fit the Gaussian
+    popt, _ = curve_fit(gaussian_2d, (x_data, y_data), intensity_data, p0=initial_guess)
+    
+    # Extract the fitted parameters
+    _, _, sigma_x_fit, sigma_y_fit, _, _ = popt
+    
+    return cp.abs(sigma_x_fit), cp.abs(sigma_y_fit)
 
 
 
