@@ -1155,7 +1155,7 @@ def plots_fixeddistance(movementtimes, initialtemperatures, analysisout):
     axs[0].set_xlabel('Movement Time (μs)')
     axs[0].set_ylabel('Survival Probability')
     axs[0].set_title('Survival Probability vs Movement Time')
-    axs[0].set_ylim(0, 100)
+    axs[0].set_ylim(-5, 105)
     axs[0].legend()
 
     # Set labels, title, and legend for temperature plot
