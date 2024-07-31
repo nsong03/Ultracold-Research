@@ -320,7 +320,7 @@ def exponentialphaseresponse(AWGwaveform):
     # return AWGwaveform + cp.sqrt(1-AWGwaveform**2) * 1j # Eulers identity  + Trig trick
     return cp.exp(AWGwaveform*1j)
 
-
+ 
 def snapshot(cycle, globalvariables):
     '''Cycle here is non-zero padded section of length numpix_frame of the AWGwaveform.'''
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
