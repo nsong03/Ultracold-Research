@@ -48,7 +48,7 @@ def initpath_linearramp(globalvariables):
 
     # Function to calculate jerk from acceleration
     def calculate_jerk(acceleration, dt):
-        jerk = np.gradient(acceleration, dt)
+        jerk = np.gradient(acceleration, dt, edge_order = 2)
         return jerk
 
     velocities, positions = integrate_acceleration(accelerations, time_step)
@@ -79,9 +79,37 @@ def initpath_sinsqramp_general(globalvariables):
     D = final_position - initial_position
     
     positions = np.sin(np.linspace(0, np.pi/2, num_steps))**2 * D + initial_position
-    velocities = np.gradient(positions, time)
-    accelerations = np.gradient(velocities, time)
-    jerks = np.gradient(accelerations, time)
+    velocities = np.gradient(positions, time, edge_order = 2)
+    accelerations = np.gradient(velocities, time, edge_order = 2)
+    jerks = np.gradient(accelerations, time, edge_order = 2)
+    
+    positions = positions / 10**6
+    velocities = velocities / 10**6
+    accelerations = accelerations / 10**6
+    jerks = jerks / 10**6
+    
+    return positions,velocities,accelerations, jerks, time
+
+def initpath_general(globalvariables):
+    '''Initializes positions throughout the movementtime with an acceleration profile that is a linear ramp up for half the time then down for half the time that moves
+    the atom from startlocation to endlocation.'''
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+
+    
+    # Define the number of time steps
+    num_steps = 1000
+    total_time = movementtime
+    time = np.linspace(0, total_time, num_steps)
+    
+    # Initial and final positions
+    initial_position = startlocation * 10**6  # Convert to micrometers
+    final_position = endlocation * 10**6  # Convert to micrometers
+    D = final_position - initial_position
+    
+    positions = np.sin(np.linspace(0, np.pi/2, num_steps))**2 * D + initial_position
+    velocities = np.gradient(positions, time, edge_order = 2)
+    accelerations = np.gradient(velocities, time, edge_order = 2)
+    jerks = np.gradient(accelerations, time, edge_order = 2)
     
     positions = positions / 10**6
     velocities = velocities / 10**6
@@ -452,7 +480,7 @@ def initdistribution_MaxwellBoltzmann(num_particles, temperature, positionstd, a
     
     # Standard deviation for velocity from Maxwell-Boltzmann distribution
     kb = 1.38*10**(-23)
-    energy = 3/2 * kb * temperature
+    energy = 1/2 * kb * temperature
     std_velocity = np.sqrt(2 * energy / atommass)
     std_velocity = (std_velocity) # velocity in terms of pixels / timestep
     std_position = positionstd / pixelsize_fourier # pixel position
