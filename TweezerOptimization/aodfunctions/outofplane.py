@@ -36,7 +36,7 @@ def compute_gradient_cp(potential_2d, xspacing, zspacing):
     potential_2d (cupy.ndarray): 2D potential profile with shape (numframes, lenframe).
     xspacing (float): Spatial spacing of each pixel in each frame.
     zspacing (float): Spatial spacing in the z-direction between each frame.
-
+ 
     Returns:
     tuple: Gradients in the x and z directions.
     """
@@ -144,7 +144,7 @@ def snapshots_oop_potential(AWGframe_E, netpower, znumoffsets, zstart, zspacing,
         I = F.get_intensity()
         I = I / cp.sum(cp.abs(I)) * netpower
         Icut = I[(len(I)-1)//2]
-        snapshotsout[i, :] = Icut.astype(cp.float)
+        snapshotsout[i, :] = Icut.astype(cp.float32)
         
     return snapshotsout
 
@@ -218,7 +218,7 @@ def retrieve_oop_forces(AWGwaveform, znumoffsets, zstart, zspacing, frameheight_
 
     # snapshots = cp.array([realtofourier_norm(zeropadframe(snap, globalvariables),calibrationshot_energy) for snap in snapshots]).astype(float)
     if timeperframe > 1:
-        interpolated_snapshots = cp.zeros((num_snapshots + (num_snapshots - 1) * (timeperframe - 1), znumoffsets,numpix_frame), dtype=cp.float)
+        interpolated_snapshots = cp.zeros((num_snapshots + (num_snapshots - 1) * (timeperframe - 1), znumoffsets,numpix_frame), dtype=cp.float32)
         interpolated_snapshots[::timeperframe] = frames_2d
         
         for i in range(1, timeperframe):
@@ -249,7 +249,7 @@ def initdistribution_MaxwellBoltzmann3D(num_particles, temperature, positionstd,
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
     
     frame_xspacing = (frame_sizes[0] * 2 + cp.abs(startlocation - endlocation)) / numpix_frame # in units of meters / FRAME pixel
-    x0 = frame_sizes[0] / frame_xspacing # In units of FRAME pixels
+    x0 = tonumpy(frame_sizes[0] / frame_xspacing) # In units of FRAME pixels
         
     # Standard deviation for velocity from Maxwell-Boltzmann distribution
     kb = 1.38*10**(-23)
