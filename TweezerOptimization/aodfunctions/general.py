@@ -1333,6 +1333,7 @@ def init_opt_waveformfitLegendre(AWGinitguess,degree, globalvariables):
     
     return tocupy(AWGwaveform), tocupy(fitted_legendre.coef)
 
+
 def opt_atomsurvival_Legendre(fittedwaveform, fittedcoefficients, inittemperature, globalvariables):
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
     
