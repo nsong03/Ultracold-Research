@@ -153,7 +153,7 @@ def retrieve_oop_potentials(AWGwaveform, znumoffsets, zstart, zspacing, framehei
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
 
     tweezerenergy_max = hbar * tweezerdepth
-    calibrationshot = snapshots_oop_potential(AWGinitguessexponential[0:500], 1, 1, focallength, 0,
+    calibrationshot = snapshots_oop_potential(AWGwaveform[0:500], 1, 1, focallength, 0,
                                   frameheight_real, framesizes, globalvariables)
     calibrationshot_max = cp.max(calibrationshot)
     normalizedenergy = tweezerenergy_max / calibrationshot_max
@@ -256,7 +256,7 @@ def initdistribution_MaxwellBoltzmann3D(num_particles, temperature, positionstd,
     energy = 1/2 * kb * temperature
     std_velocity = np.sqrt(2 * energy / atommass)
     std_velocity = (std_velocity) # velocity in terms of pixels / timestep
-    std_position = positionstd / frame_xspacing # pixel position
+    std_position = tonumpy(positionstd / frame_xspacing )# pixel position
     # Generating velocities
     velocitiesx = np.random.normal(0, std_velocity, (num_particles,1)) # in units of m/s
     velocitiesx[velocitiesx > 2* np.std(velocitiesx)] *= 0.5
@@ -308,38 +308,8 @@ def montecarlo_oop_2D(forces, initdistribution3D, atommass, frame_sizes, zspacin
         if iteration % framespacing == 0:
             atommoveframes.append(x_t2)
 
-    return np.array([x_t1,z_t1]), np.array([dx_t1,dz_t1]), np.array([ddx_t1,ddz_t1]), atommoveframes
+    return np.array([tonumpy(x_t1),tonumpy(z_t1)]), np.array([tonumpy(dx_t1),tonumpy(dz_t1)]), np.array([tonumpy(ddx_t1),tonumpy(ddz_t1)]), atommoveframes
 
-def sum_and_plot_intensity_arrays(intensity_arrays, num_to_sum, fig_size=(10, 10)):
-    """
-    Sum a specified number of evenly spaced 2D CuPy intensity arrays and plot the result with adjustable figure size.
-
-    Parameters:
-    intensity_arrays (list of cupy.ndarray): List of 2D CuPy intensity arrays.
-    num_to_sum (int): Number of arrays to sum.
-    fig_size (tuple): Size of the plot figure.
-    """
-    # Ensure num_to_sum does not exceed the length of intensity_arrays
-    num_to_sum = min(num_to_sum, len(intensity_arrays))
-    
-    # Calculate indices of evenly spaced arrays
-    indices = cp.linspace(0, len(intensity_arrays) - 1, num_to_sum, dtype=cp.int32)
-    
-    # Sum the specified number of evenly spaced intensity arrays
-    selected_arrays = [intensity_arrays[idx] for idx in indices]
-    summed_array = cp.sum(cp.stack(selected_arrays), axis=0)
-    
-    # Transfer the result to the host for plotting
-    summed_array_host = tonumpy(summed_array)
-    
-    # Plot the summed intensity array
-    plt.figure(figsize=fig_size)
-    plt.imshow(summed_array_host, cmap='viridis')
-    plt.colorbar(label='Intensity')
-    plt.title(f'Sum of {num_to_sum} Evenly Spaced Intensity Arrays')
-    plt.xlabel('X-axis')
-    plt.ylabel('Y-axis')
-    plt.show()
 
 def analyze_survivalprobability_oop_2D(pout, finalposition, tweezerwidths, globalvariables):
     """
@@ -356,21 +326,20 @@ def analyze_survivalprobability_oop_2D(pout, finalposition, tweezerwidths, globa
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
     # finalposition, _ = positionstofourier(endlocation, 0, globalvariables)
     
-    pout_x = pout[0] # Everything in terms of Kung-Fu fighting (FRAME pixels)
-    pout_z = pout[1]
+    pout_x = tonumpy(pout[0])   # Everything in terms of Kung-Fu fighting (FRAME pixels)
+    pout_z = tonumpy(pout[1])
     finalposition_x = finalposition[0]
     finalposition_z = finalposition[1]
     tweezerwidth_x = tweezerwidths[0]
     tweezerwidth_z = tweezerwidths[1]
     
     # Calculate the lower and upper bounds
-    lower_bound_x = finalposition_x - tweezerwidth_x
-    upper_bound_x = finalposition_x + tweezerwidth_x
+    lower_bound_x = tonumpy(finalposition_x - tweezerwidth_x)
+    upper_bound_x = tonumpy(finalposition_x + tweezerwidth_x)
     
-    lower_bound_z = finalposition_z - tweezerwidth_z
-    upper_bound_z = finalposition_z + tweezerwidth_z
-    
-    # Count the number of values within the bounds
+    lower_bound_z = tonumpy(finalposition_z - tweezerwidth_z)
+    upper_bound_z = tonumpy(finalposition_z + tweezerwidth_z)
+    # Count the number of values within the bound
     count_within_bounds = np.sum((pout_x >= lower_bound_x) & (pout_x <= upper_bound_x) & (pout_z <= upper_bound_z) & (pout_z >= lower_bound_z))
     # Calculate the percentage
     percentage_within_bounds = count_within_bounds / len(pout_x) * 100.0
