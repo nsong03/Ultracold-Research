@@ -290,7 +290,7 @@ def montecarlo_oop_2D(forces, initdistribution3D, atommass, frame_sizes, zspacin
     dz_t1 = dz0
 
     atommoveframes = []
-    atommoveframes.append(x_t1)
+    atommoveframes.append([x_t1, z_t1])
 
     for iteration in range(len(forces)):
         ddx_frame = forces[iteration][0] / atommass # gradient in terms of m/s^2 now, with coordinates 1 pixel -> frame_xspacing 
@@ -306,9 +306,10 @@ def montecarlo_oop_2D(forces, initdistribution3D, atommass, frame_sizes, zspacin
         dz_t1 = dz_t2
         z_t1 = z_t2
         if iteration % framespacing == 0:
-            atommoveframes.append(x_t2)
+            atommoveframes.append([x_t2, z_t2])
 
-    return np.array([tonumpy(x_t1),tonumpy(z_t1)]), np.array([tonumpy(dx_t1),tonumpy(dz_t1)]), np.array([tonumpy(ddx_t1),tonumpy(ddz_t1)]), atommoveframes
+    return np.array([tonumpy(x_t1),tonumpy(z_t1)]), np.array([tonumpy(dx_t1),tonumpy(dz_t1)]), np.array([tonumpy(ddx_t1),tonumpy(ddz_t1)]), tonumpy(cp.array(atommoveframes))
+
 
 
 def analyze_survivalprobability_oop_2D(pout, finalposition, tweezerwidths, globalvariables):
