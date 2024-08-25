@@ -6,7 +6,7 @@ def initpath_linearramp(globalvariables):
     the atom from startlocation to endlocation.'''
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
 
-    
+     
     # Define the number of time steps
     num_steps = 1000
     total_time = movementtime
