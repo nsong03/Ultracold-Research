@@ -1,5 +1,15 @@
 from .dependencies import *
 from .settings import *
+from .outofplane import *
+
+
+import diffractsim
+diffractsim.set_backend("CUDA") #Change the string to "CUDA" to use GPU acceleration
+
+from diffractsim import MonochromaticField, Lens, nm, mm, cm, RectangularSlit
+
+
+
 
 def initpath_linearramp(globalvariables):
     '''Initializes positions throughout the movementtime with an acceleration profile that is a linear ramp up for half the time then down for half the time that moves
@@ -1450,6 +1460,626 @@ def opt_forces_Legendre(fittedwaveform, desiredpositions, desiredacceleration, f
 
 
 
+# Further analysis code:
+
+def analyze_waveformsurvival(AWGwaveform, temperature, globalvariables, oop_variables, timeperframe, numframes=10):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+    numzframes, zstart, frame_zspacing, frame_size, frameheight_real = oop_variables
+    
+
+    waveform_forces = retrieve_oop_forces(AWGwaveform, numzframes, zstart, frame_zspacing, frameheight_real, frame_size, globalvariables, timeperframe)
+    framespacing = len(waveform_forces) // numframes
+    
+    initdistribution = initdistribution_MaxwellBoltzmann3D(num_particles, temperature, 0, zstart, frame_zspacing, frame_size, globalvariables)
+    p_out, dp_out, ddp_out, atommoveframes = montecarlo_oop_2D(waveform_forces, initdistribution, atommass, frame_size, frame_zspacing, globalvariables, numframes)
+
+    frame_xspacing = (frame_size[0] * 2 + cp.abs(startlocation - endlocation)) / numpix_frame # in units of meters / FRAME pixel
+    finalposition_x = (frame_size[0]  + cp.abs(startlocation - endlocation)) / frame_xspacing # In units of FRAME pixels
+    finalposition_z = (focallength - zstart) / frame_zspacing
+    finalposition = [finalposition_x, finalposition_z]
+    
+    
+    calibration_potential = snapshots_oop_potential(AWGwaveform[-numpix_frame:], 1, numzframes, zstart, frame_zspacing, 
+                                                    frameheight_real, frame_size, globalvariables)
+    tweezerwidths = fit_gaussian_2d(tonumpy(calibration_potential))
+    percentagelive = analyze_survivalprobability_oop_2D(p_out, finalposition, tweezerwidths, globalvariables)
+                    
+    
+    # Store the result in the results array
+    results_final = [percentagelive,tonumpy(p_out),tonumpy(dp_out)]
+    movementframes = atommoveframes
+    forcesframes = cp.array([waveform_forces[iter] for iter in range(len(waveform_forces)) if iter % framespacing == 0])
+
+    return results_final, movementframes, forcesframes
+
+def get_potentialframes_oop(AWGwaveform, temperature, globalvariables, oop_variables, timeperframe, numframes=10):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+    numzframes, zstart, frame_zspacing, frame_size, frameheight_real = oop_variables
+    
+
+    waveform_potentials = retrieve_oop_potentials(AWGwaveform, numzframes, zstart, frame_zspacing, frameheight_real, frame_size, globalvariables, timeperframe)
+    framespacing = len(waveform_potentials) // numframes
+    
+    potentialframes = cp.array([waveform_potentials[iter] for iter in range(len(waveform_potentials)) if iter % framespacing == 0])
+
+    return potentialframes
+
+def extract_lowest_intensity_points(frames, N, zoom_factor=10):
+    total_frames = frames.shape[0]
+    step = total_frames // N
+    sampled_frames = frames[::step]
+
+    highest_points = []
+    for i, frame in enumerate(sampled_frames):
+        # Upsample the frame using bicubic interpolation
+        upsampled_frame = zoom(frame, zoom_factor, order=3)  # Bicubic interpolation
+
+        # Find the coordinates of the maximum value in the upsampled frame
+        max_idx = np.unravel_index(np.argmin(upsampled_frame), upsampled_frame.shape)
+
+        # Adjust the coordinates back to the original frame scale
+        max_x = max_idx[1] / zoom_factor
+        max_y = max_idx[0] / zoom_factor
+        max_value = upsampled_frame[max_idx]
+
+        highest_points.append((max_x, max_y, max_value))
+
+    return highest_points
+
+def extract_highest_intensity_points(frames, N, zoom_factor=10):
+    total_frames = frames.shape[0]
+    step = total_frames // N
+    sampled_frames = frames[::step]
+
+    highest_points = []
+    for i, frame in enumerate(sampled_frames):
+        # Upsample the frame using bicubic interpolation
+        upsampled_frame = zoom(frame, zoom_factor, order=3)  # Bicubic interpolation
+
+        # Find the coordinates of the maximum value in the upsampled frame
+        max_idx = np.unravel_index(np.argmax(upsampled_frame), upsampled_frame.shape)
+
+        # Adjust the coordinates back to the original frame scale
+        max_x = max_idx[1] / zoom_factor
+        max_y = max_idx[0] / zoom_factor
+        max_value = upsampled_frame[max_idx]
+
+        highest_points.append((max_x, max_y, max_value))
+
+    return highest_points
+
+def plot_highest_intensity_points(highest_points):
+    x_coords = [point[0] for point in highest_points]
+    y_coords = [point[1] for point in highest_points]
+    values = [point[2] for point in highest_points]
+
+    # Plot 1: Location of the highest intensity points
+    plt.figure(figsize=(10, 3))
+    plt.subplot(1, 2, 1)
+    plt.scatter(x_coords, y_coords, c=range(len(highest_points)), cmap='viridis')
+    plt.colorbar(label='Frame Index')
+    plt.xlabel('X-coordinate')
+    plt.ylabel('Z-coordinate')
+    plt.title('Location of Highest Intensity Points')
+
+    # Plot 2: Value of the highest intensity points vs their x-coordinates
+    plt.subplot(1, 2, 2)
+    plt.plot(x_coords, values, 'o-')
+    plt.xlabel('X-coordinate')
+    plt.ylabel('Intensity Value')
+    plt.title('Intensity Value vs X-coordinate')
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_particle_positions_singleshot(movementframes):
+    # Convert CuPy array to NumPy array for plotting
+    N, numdims, M, C = movementframes.shape
+
+    plt.figure(figsize=(12, 6))
+
+    # Plot positions of particles in each frame
+    for i in range(N):
+        plt.scatter(tonumpy(movementframes[i,0,:]), tonumpy(movementframes[i,1,:]), alpha=0.005, s=2)
+    for i in range(N):
+        plt.scatter([], [], label=f'Frame {i+1}', color=plt.cm.tab10(i % 10))
+    # Adding labels and legend
+    plt.xlabel('X-coordinate')
+    plt.ylabel('Z-coordinate')
+    plt.title('Particle Positions Over Frames')
+
+    
+    plt.legend(loc='upper right', prop={'size': 4})
+    plt.grid(True)
+    plt.show()
+
+def plot_particle_positions(movementframes):
+    # Convert CuPy array to NumPy array for plotting
+    N, M, C = movementframes.shape
+    
+    plt.figure(figsize=(12, 6))
+
+    # Plot positions of particles in each frame
+    for i in range(N):
+        plt.scatter(tonumpy(movementframes[i]), [i] * M, label=f'Frame {i+1}', alpha=0.6)
+
+    # Adding labels and legend
+    plt.xlabel('X-coordinate')
+    plt.ylabel('Frame')
+    plt.title('Particle Positions Over Frames')
+    plt.legend(loc='lower right')
+    plt.grid(True)
+    plt.show()
+
+def sum_and_plot_intensity_arrays(intensity_arrays, num_to_sum, fig_size=(10, 10)):
+    """
+    Sum a specified number of evenly spaced 2D CuPy intensity arrays and plot the result with adjustable figure size.
+
+    Parameters:
+    intensity_arrays (list of cupy.ndarray): List of 2D CuPy intensity arrays.
+    num_to_sum (int): Number of arrays to sum.
+    fig_size (tuple): Size of the plot figure.
+    """
+    # Ensure num_to_sum does not exceed the length of intensity_arrays
+    num_to_sum = min(num_to_sum, len(intensity_arrays))
+    
+    # Calculate indices of evenly spaced arrays
+    indices = cp.linspace(0, len(intensity_arrays) - 1, num_to_sum, dtype=cp.int32)
+    
+    # Sum the specified number of evenly spaced intensity arrays
+    selected_arrays = [intensity_arrays[idx] for idx in indices]
+    summed_array = cp.sum(cp.stack(selected_arrays), axis=0)
+    
+    # Transfer the result to the host for plotting
+    summed_array_host = tonumpy(summed_array)
+    
+    # Plot the summed intensity array
+    plt.figure(figsize=fig_size)
+    plt.imshow(summed_array_host, cmap='viridis')
+    # plt.colorbar(label='Intensity')
+    plt.title(f'Sum of {num_to_sum} Evenly Spaced Intensity Arrays')
+    plt.xlabel('X-axis')
+    plt.ylabel('Y-axis')
+    plt.show()
+
+
+
+
+
+
+def interpolate_potential_cp(potential_slices, xspacing, zspacing):
+    """
+    Interpolate a 2D potential profile from slices using CuPy.
+
+    Parameters:
+    potential_slices (cupy.ndarray): Array of 1D arrays, each representing a slice of the potential along the x-axis.
+    xspacing (float): Spatial spacing of each pixel in each frame.
+    zspacing (float): Spatial spacing in the z-direction between each frame.
+
+    Returns:
+    cupy.ndarray: Interpolated 2D potential profile.
+    """
+    potential_slices = cp.asarray(potential_slices)
+    num_slices, num_points = potential_slices.shape
+    z_coords = cp.arange(num_slices) * zspacing
+    x_coords = cp.arange(num_points) * xspacing
+
+    zz, xx = cp.meshgrid(z_coords, x_coords, indexing='ij')
+    return potential_slices, zz, xx
+
+def compute_gradient_cp(potential_2d, xspacing, zspacing):
+    """
+    Compute the gradient of a 2D potential profile using CuPy with second-order central differences.
+
+    Parameters:
+    potential_2d (cupy.ndarray): 2D potential profile with shape (numframes, lenframe).
+    xspacing (float): Spatial spacing of each pixel in each frame.
+    zspacing (float): Spatial spacing in the z-direction between each frame.
+ 
+    Returns:
+    tuple: Gradients in the x and z directions.
+    """
+    numframes, lenframe = potential_2d.shape
+    
+    # Initialize gradients
+    grad_x = cp.zeros_like(potential_2d)
+    grad_z = cp.zeros_like(potential_2d)
+    
+    # Compute second-order central differences for interior points
+    grad_x[:, 2:-2] = (-potential_2d[:, 4:] + 8 * potential_2d[:, 3:-1] - 8 * potential_2d[:, 1:-3] + potential_2d[:, :-4]) / (12 * xspacing)
+    grad_z[2:-2, :] = (-potential_2d[4:, :] + 8 * potential_2d[3:-1, :] - 8 * potential_2d[1:-3, :] + potential_2d[:-4, :]) / (12 * zspacing)
+    
+    # Handle boundaries with first-order differences
+    grad_x[:, 0] = (potential_2d[:, 1] - potential_2d[:, 0]) / xspacing
+    grad_x[:, 1] = (potential_2d[:, 2] - potential_2d[:, 0]) / (2 * xspacing)
+    grad_x[:, -2] = (potential_2d[:, -1] - potential_2d[:, -3]) / (2 * xspacing)
+    grad_x[:, -1] = (potential_2d[:, -1] - potential_2d[:, -2]) / xspacing
+    
+    grad_z[0, :] = (potential_2d[1, :] - potential_2d[0, :]) / zspacing
+    grad_z[1, :] = (potential_2d[2, :] - potential_2d[0, :]) / (2 * zspacing)
+    grad_z[-2, :] = (potential_2d[-1, :] - potential_2d[-3, :]) / (2 * zspacing)
+    grad_z[-1, :] = (potential_2d[-1, :] - potential_2d[-2, :]) / zspacing
+    
+    return grad_x, grad_z
+
+def interpolate_gradient_cp(grad_x, grad_z, x_coords, y_coords):
+    """
+    Interpolates the gradient at specific coordinates using bilinear interpolation with CuPy.
+
+    Parameters:
+    grad_x (cupy.ndarray): Gradient in the x direction.
+    grad_z (cupy.ndarray): Gradient in the z direction.
+    x_coords (list or array): x coordinates to retrieve the gradient at.
+    y_coords (list or array): y coordinates to retrieve the gradient at.
+    xspacing (float): Spatial spacing of each pixel in each frame.
+    zspacing (float): Spatial spacing in the z-direction between each frame.
+
+    Returns:
+    tuple: Interpolated gradients at the specified coordinates.
+    """
+    # Convert coordinates to grid space
+    x_coords = cp.array(x_coords) 
+    y_coords = cp.array(y_coords) 
+
+    x0 = cp.floor(x_coords).astype(cp.int32)
+    x1 = x0 + 1
+    y0 = cp.floor(y_coords).astype(cp.int32)
+    y1 = y0 + 1
+
+    x0 = cp.clip(x0, 0, grad_x.shape[1] - 1)
+    x1 = cp.clip(x1, 0, grad_x.shape[1] - 1)
+    y0 = cp.clip(y0, 0, grad_x.shape[0] - 1)
+    y1 = cp.clip(y1, 0, grad_x.shape[0] - 1)
+
+    Ia_x = grad_x[y0, x0]
+    Ib_x = grad_x[y1, x0]
+    Ic_x = grad_x[y0, x1]
+    Id_x = grad_x[y1, x1]
+
+    Ia_z = grad_z[y0, x0]
+    Ib_z = grad_z[y1, x0]
+    Ic_z = grad_z[y0, x1]
+    Id_z = grad_z[y1, x1]
+
+    wa = (x1 - x_coords) * (y1 - y_coords)
+    wb = (x1 - x_coords) * (y_coords - y0)
+    wc = (x_coords - x0) * (y1 - y_coords)
+    wd = (x_coords - x0) * (y_coords - y0)
+
+    interpolated_grad_x = wa * Ia_x + wb * Ib_x + wc * Ic_x + wd * Id_x
+    interpolated_grad_z = wa * Ia_z + wb * Ib_z + wc * Ic_z + wd * Id_z
+
+    return interpolated_grad_x, interpolated_grad_z
+
+def snapshots_oop_potential(AWGframe_E, netpower, znumoffsets, zstart, zspacing, frameheight_real, framesizes, globalvariables):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+    ''' Get znumoffsets snapshots of the fourier transform, starting at zstart and propagating through znumoffsets frames at zspacing. 
+    Frameheight_real is the number of y-frames to use (pick an odd number to avoid interpolating), while framsizes determines the
+    x and y padding beyond the start and end locations. Netpower is for power conservation, but only of ONE
+    1D frame at the FOCAL point. So be sure to get only one slice from the bluestein propagation.'''
+    xextent = framesizes[0]
+    yextent = framesizes[1]
+
+    AWGframe_E = array_1dto2d(AWGframe_E, frameheight_real)
+    
+    snapshotsout = cp.zeros((znumoffsets, numpix_frame))
+    
+    F = MonochromaticField(
+        wavelength = wavelength, extent_x=numpix_frame * pixelsize_real, extent_y=numpix_frame * pixelsize_real, 
+        Nx=numpix_frame, Ny=frameheight_real, intensity =1.
+    )
+    F.E = AWGframe_E
+    F.propagate(focallength)
+    F.add(Lens(focallength, radius = numpix_frame * pixelsize_real / 2))
+    F.zoom_propagate(zstart,
+             x_interval = [startlocation - xextent, endlocation+xextent], y_interval = [- yextent, +yextent])
+    I = F.get_intensity()
+    I = I / cp.sum(cp.abs(I)) * netpower
+    Icut = I[(len(I)-1)//2]
+    snapshotsout[0, :] = Icut.astype(cp.float32)
+    
+    for i in range(1,znumoffsets):
+        F.propagate(zspacing)
+        I = F.get_intensity()
+        I = I / cp.sum(cp.abs(I)) * netpower
+        Icut = I[(len(I)-1)//2]
+        snapshotsout[i, :] = Icut.astype(cp.float32)
+        
+    return snapshotsout
+
+def retrieve_oop_potentials(AWGwaveform, znumoffsets, zstart, zspacing, frameheight_real, framesizes, globalvariables,
+                            timeperframe = 1):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+
+    tweezerenergy_max = hbar * tweezerdepth
+    calibrationshot = snapshots_oop_potential(AWGwaveform[0:500], 1, 1, focallength, 0,
+                                  frameheight_real, framesizes, globalvariables)
+    calibrationshot_max = cp.max(calibrationshot)
+    normalizedenergy = tweezerenergy_max / calibrationshot_max
+
+    num_snapshots = (len(AWGwaveform) - numpix_frame) // timeperframe + 1
+    
+    # Create a view of the input array with overlapping windows
+    strides = (AWGwaveform.strides[0] * timeperframe, AWGwaveform.strides[0])
+    shape = (num_snapshots, numpix_frame)
+    snapshots = as_strided(AWGwaveform, shape=shape, strides=strides)
+
+
+    def wrapper(waveformshot):
+        return snapshots_oop_potential(waveformshot, normalizedenergy, znumoffsets, zstart, zspacing,
+                                       frameheight_real, framesizes, globalvariables)
+    
+    frames_2d = cp.array([wrapper(snap) for snap in snapshots])
+
+    # snapshots = cp.array([realtofourier_norm(zeropadframe(snap, globalvariables),calibrationshot_energy) for snap in snapshots]).astype(float)
+    if timeperframe > 1:
+        interpolated_snapshots = cp.zeros((num_snapshots + (num_snapshots - 1) * (timeperframe - 1), znumoffsets,numpix_frame), dtype=cp.float)
+        interpolated_snapshots[::timeperframe] = frames_2d
+        
+        for i in range(1, timeperframe):
+            interpolated_snapshots[i::timeperframe] = (frames_2d[:-1] * (timeperframe - i) + frames_2d[1:] * i) / timeperframe
+
+        return interpolated_snapshots
+
+    return frames_2d
+
+def retrieve_oop_forces(AWGwaveform, znumoffsets, zstart, zspacing, frameheight_real, framesizes, globalvariables,
+                            timeperframe = 1):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+
+    tweezerenergy_max = hbar * tweezerdepth
+    calibrationshot = snapshots_oop_potential(AWGwaveform[0:500], 1, 1, focallength, 0,
+                                  frameheight_real, framesizes, globalvariables)
+    calibrationshot_max = cp.max(calibrationshot)
+    normalizedenergy = tweezerenergy_max / calibrationshot_max
+
+    num_snapshots = (len(AWGwaveform) - numpix_frame) // timeperframe + 1
+    
+    # Create a view of the input array with overlapping windows
+    strides = (AWGwaveform.strides[0] * timeperframe, AWGwaveform.strides[0])
+    shape = (num_snapshots, numpix_frame)
+    snapshots = as_strided(AWGwaveform, shape=shape, strides=strides)
+
+
+    def wrapper(waveformshot):
+        return snapshots_oop_potential(waveformshot, normalizedenergy, znumoffsets, zstart, zspacing,
+                                       frameheight_real, framesizes, globalvariables)
+    
+    frames_2d = cp.array([wrapper(snap) for snap in snapshots])
+
+    frame_xspacing = (framesizes[0] * 2 + cp.abs(startlocation - endlocation)) / numpix_frame
+    def wrapper_getforces(potential):
+        # Interpolate potential
+        potential_slices, zz, xx = interpolate_potential_cp(potential, frame_xspacing, zspacing)
+        # Compute gradient
+        grad_x, grad_z = compute_gradient_cp(potential_slices, frame_xspacing, zspacing)
+        return cp.array([grad_x, grad_z])
+
+    # snapshots = cp.array([realtofourier_norm(zeropadframe(snap, globalvariables),calibrationshot_energy) for snap in snapshots]).astype(float)
+    if timeperframe > 1:
+        interpolated_snapshots = cp.zeros((num_snapshots + (num_snapshots - 1) * (timeperframe - 1), znumoffsets,numpix_frame), dtype=cp.float32)
+        interpolated_snapshots[::timeperframe] = frames_2d
+        
+        for i in range(1, timeperframe):
+            interpolated_snapshots[i::timeperframe] = (frames_2d[:-1] * (timeperframe - i) + frames_2d[1:] * i) / timeperframe
+
+        interpolated_forces = cp.array([wrapper_getforces(potential) for potential in interpolated_snapshots])
+
+        return interpolated_forces
+
+    interpolated_forces = cp.array([wrapper_getforces(potential) for potential in frames_2d])
+
+    return interpolated_forces
+
+def initdistribution_MaxwellBoltzmann3D(num_particles, temperature, positionstd, zstart, zspacing, frame_sizes, globalvariables):
+    """
+    Generates a Maxwell-Boltzmann distribution of particles' positions and velocities. In units of fourier pixels / timestep
+
+    Parameters:
+    - num_particles (int): Number of particles.
+    - mass (float): Mass of each particle.
+    - temperature (float): Temperature in Kelvin.
+    - kb (float, optional): Boltzmann constant. Default is 1.38e-23 J/K.
+
+    Returns:
+    - positions (np.ndarray): Array of positions of particles. x is direction of motion, z is tweezer propagation direction.
+    - velocities (np.ndarray): Array of velocities of particles.
+    """
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+    
+    frame_xspacing = (frame_sizes[0] * 2 + cp.abs(startlocation - endlocation)) / numpix_frame # in units of meters / FRAME pixel
+    x0 = tonumpy(frame_sizes[0] / frame_xspacing) # In units of FRAME pixels
+        
+    # Standard deviation for velocity from Maxwell-Boltzmann distribution
+    kb = 1.38*10**(-23)
+    energy = 1/2 * kb * temperature
+    std_velocity = np.sqrt(2 * energy / atommass)
+    std_velocity = (std_velocity) # velocity in terms of pixels / timestep
+    std_position = tonumpy(positionstd / frame_xspacing )# pixel position
+    # Generating velocities
+    velocitiesx = np.random.normal(0, std_velocity, (num_particles,1)) # in units of m/s
+    velocitiesx[velocitiesx > 2* np.std(velocitiesx)] *= 0.5
+    velocitiesy = np.random.normal(0, std_velocity, (num_particles,1)) # in units of m/s
+    velocitiesy[velocitiesy > 2* np.std(velocitiesy)] *= 0.5
+    velocitiesz = np.random.normal(0, std_velocity, (num_particles,1)) # in units of m/s
+    velocitiesz[velocitiesz > 2* np.std(velocitiesz)] *= 0.5
+    # Generating positions (assuming normal distribution centered at 0 with some spread) # in units of FRAME pixels
+    positionsx = np.random.normal(0, std_position, (num_particles,1)) + x0
+    positionsy = np.random.normal(0, std_position, (num_particles,1)) 
+    positionsz = np.random.normal(0, std_position, (num_particles,1)) + (focallength - zstart) / zspacing
+
+    positions = np.array([positionsx, positionsy, positionsz])
+    velocities = np.array([velocitiesx, velocitiesy, velocitiesz])
+    return positions, velocities
+
+def montecarlo_oop_2D(forces, initdistribution3D, atommass, frame_sizes, zspacing, globalvariables, numframes=10):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+
+    framespacing = len(forces) // numframes
+    
+    frame_xspacing = (frame_sizes[0] * 2 + cp.abs(startlocation - endlocation)) / numpix_frame
+
+    x0 = tocupy(initdistribution3D[0][0]) # Right now its in FRAME pixels
+    dx0 = tocupy(initdistribution3D[1][0]) # Right now its in m/s
+    z0 = tocupy(initdistribution3D[0][2]) # Right now its in FRAME pixels
+    dz0 = tocupy(initdistribution3D[1][2]) # Right now its in m/s
+    x_t1 = x0
+    dx_t1 = dx0
+    z_t1 = z0
+    dz_t1 = dz0
+
+    atommoveframes = []
+    atommoveframes.append([x_t1, z_t1])
+
+    for iteration in range(len(forces)):
+        ddx_frame = forces[iteration][0] / atommass # gradient in terms of m/s^2 now, with coordinates 1 pixel -> frame_xspacing 
+        ddz_frame = forces[iteration][1] / atommass # gradient in terms of m/s^2 now, with coordinates 1 pixel -> zspacing
+
+        ddx_t1,ddz_t1 = interpolate_gradient_cp(ddx_frame, ddz_frame, x_t1, z_t1) # in units of m/s^2 
+        dx_t2 = dx_t1 + ddx_t1 * timestep # in units of m/s
+        x_t2 = x_t1 + dx_t1 * timestep / frame_xspacing  # in units of FRAME pixels
+        dz_t2 = dz_t1 + ddz_t1 * timestep
+        z_t2 = z_t1 + dz_t1 * timestep / frame_xspacing
+        dx_t1 = dx_t2
+        x_t1 = x_t2
+        dz_t1 = dz_t2
+        z_t1 = z_t2
+        if iteration % framespacing == 0:
+            atommoveframes.append([x_t2, z_t2])
+
+    return np.array([tonumpy(x_t1),tonumpy(z_t1)]), np.array([tonumpy(dx_t1),tonumpy(dz_t1)]), np.array([tonumpy(ddx_t1),tonumpy(ddz_t1)]), tonumpy(cp.array(atommoveframes))
+
+
+
+def analyze_survivalprobability_oop_2D(pout, finalposition, tweezerwidths, globalvariables):
+    """
+    Calculate the percentage of values in xout that are within 1 Gaussian width of the final position.
+    
+    Parameters:
+    xout (cp.ndarray): Array of values to analyze.
+    gaussianwidth (float): The width of the Gaussian.
+    globalvariables (dict): A dictionary of global variables.
+    
+    Returns:
+    float: The percentage of values within 1 Gaussian width of the final position.
+    """
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+    # finalposition, _ = positionstofourier(endlocation, 0, globalvariables)
+    
+    pout_x = tonumpy(pout[0])   # Everything in terms of Kung-Fu fighting (FRAME pixels)
+    pout_z = tonumpy(pout[1])
+    finalposition_x = finalposition[0]
+    finalposition_z = finalposition[1]
+    tweezerwidth_x = tweezerwidths[0]
+    tweezerwidth_z = tweezerwidths[1]
+    
+    # Calculate the lower and upper bounds
+    lower_bound_x = tonumpy(finalposition_x - tweezerwidth_x)
+    upper_bound_x = tonumpy(finalposition_x + tweezerwidth_x)
+    
+    lower_bound_z = tonumpy(finalposition_z - tweezerwidth_z)
+    upper_bound_z = tonumpy(finalposition_z + tweezerwidth_z)
+    # Count the number of values within the bound
+    count_within_bounds = np.sum((pout_x >= lower_bound_x) & (pout_x <= upper_bound_x) & (pout_z <= upper_bound_z) & (pout_z >= lower_bound_z))
+    # Calculate the percentage
+    percentage_within_bounds = count_within_bounds / len(pout_x) * 100.0
+    
+    return percentage_within_bounds
+
+def analyze_fixeddistance_nonoptimized_oop_2D(movementtimes, initialtemperatures, oop_variables, responsetype="Exponential",calctype="Not Ideal", guesstype = "SinSq", timeperframe=1, globalvariables=globalvariables):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+    numzframes, zstart, frame_zspacing, frame_size, frameheight_real = oop_variables
+    
+    # Calculate the number of movement times and initial temperatures
+    num_movementtimes = len(movementtimes)
+    num_initialtemperatures = len(initialtemperatures)
+    
+    # Initialize arrays to store the results
+    results = np.empty((num_movementtimes, num_initialtemperatures), dtype=object)
+    movementframes = np.empty((num_movementtimes, num_initialtemperatures), dtype=object)
+
+    # Iterate over each movement time and initial temperature
+    for i in range(num_movementtimes):
+        for j in range(num_initialtemperatures):
+            movementtime = movementtimes[i]
+            numpix_waveform = int(movementtime / cycletime * numpix_frame) + 2* numpix_frame # Why is there a 2* cycletime here? To add on the initial and final stages of the AOD. We will only change the portion in the movement time and fix the ends.
+            AWGwaveform = cp.zeros(numpix_waveform)
+            globalvariables = [aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients]
+            
+            
+            # Perform the analysis for each combination of movement time and initial temperature
+            if calctype =="Not Ideal":
+                if guesstype == "Linear":
+                    optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_linearramp(globalvariables)
+                elif guesstype == "MinJerk":
+                    optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_minimizejerk(globalvariables)
+                elif guesstype == "SinSq":
+                    optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_sinsqramp_general(globalvariables)
+                    
+                fourierpixels, time = positionstofourier(optimized_position, time, globalvariables)
+                expanded_position, expanded_time = expand_position_array(time, fourierpixels, globalvariables)
+                
+                if responsetype == "Cosine":
+                    AWGinput = initguess_waveform(AWGwaveform, optimized_position, time, globalvariables)
+                    AWGphase = cosinephaseresponse(AWGinput)                
+                elif responsetype =="Exponential":
+                    AWGinput = initguess_waveform(AWGwaveform, optimized_position, time, globalvariables)
+                    AWGphase = exponentialphaseresponse(AWGinput)     
+                
+                waveform_forces = retrieve_oop_forces(AWGphase, numzframes, zstart, frame_zspacing, frameheight_real, frame_size, globalvariables, timeperframe)
+                initdistribution = initdistribution_MaxwellBoltzmann3D(num_particles, initialtemperatures[j], 1e-9, zstart, frame_zspacing, frame_size, globalvariables)
+                p_out, dp_out, ddp_out, atommoveframes = montecarlo_oop_2D(waveform_forces, initdistribution, atommass, frame_size, frame_zspacing, globalvariables)
+
+                frame_xspacing = (frame_size[0] * 2 + cp.abs(startlocation - endlocation)) / numpix_frame # in units of meters / FRAME pixel
+                finalposition_x = (frame_size[0]  + cp.abs(startlocation - endlocation))  / frame_xspacing # In units of FRAME pixels
+                finalposition_z = (focallength - zstart) / frame_zspacing
+                finalposition = cp.array([finalposition_x, finalposition_z])
+                
+                
+                calibration_potential = snapshots_oop_potential(AWGphase[-numpix_frame:], 1, numzframes, zstart, frame_zspacing, 
+                                                                frameheight_real, frame_size, globalvariables)
+                tweezerwidths = fit_gaussian_2d(calibration_potential)
+                percentagelive = analyze_survivalprobability_oop_2D(p_out, finalposition, tweezerwidths, globalvariables)
+                                
+                
+                # Store the result in the results array
+                results[i, j] = [np.array(percentagelive),tonumpy(p_out),tonumpy(dp_out)]
+                movementframes[i, j] = [atommoveframes]
+
+        
+            # elif calctype == "Ideal":
+            #     if guesstype == "Linear":
+            #         optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_linearramp(globalvariables)
+            #     elif guesstype == "MinJerk":
+            #         optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_minimizejerk(globalvariables)
+            #     elif guesstype == "SinSq":
+            #         optimized_position, optimized_velocity, optimized_acceleration, optimized_jerk, time = initpath_sinsqramp_general(globalvariables)
+                
+            #     if responsetype == "Cosine":
+            #         AWGinput = initguess_waveform(AWGwaveform, optimized_position, time, globalvariables)
+            #         AWGphase = cosinephaseresponse(AWGinput)                
+            #     elif responsetype =="Exponential":
+            #         AWGinput = initguess_waveform(AWGwaveform, optimized_position, time, globalvariables)
+            #         AWGphase = exponentialphaseresponse(AWGinput)     
+
+            #     shotlast = realtofourier(zeropadframe(AWGphase[-numpix_frame:], globalvariables))
+            #     gaussianwidth = get_gaussianwidth_1d(tonumpy(zoomin(removeleftside(shotlast), 2)))
+            #     endtweezerlocation = get_gaussiancenter_1d(removeleftside(shotlast))
+                
+            #     forces = retrieveforces_idealconditions(AWGphase, optimized_position, True)
+            #     print(max(forces[len(forces)//2]))
+                
+            #     initial_distributions = initdistribution_MaxwellBoltzmann(num_particles, initialtemperatures[j], 1e-8, atommass, globalvariables)
+            #     xout, vout, accel = montecarlo(forces, globalvariables, initial_distributions, atommass)
+            #     print(endtweezerlocation)
+
+            #     survivalprobability = analyze_survivalprobability(xout, endtweezerlocation, gaussianwidth, globalvariables)
+            #     # Store the result in the results array
+            #     results[i, j] = [np.array(survivalprobability),tonumpy(xout),tonumpy(vout)]
+
+    return results, movementframes
+
+ 
 
 
 

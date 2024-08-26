@@ -9,6 +9,7 @@ from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 
 
+from scipy.ndimage import zoom
 
 
 import matplotlib.pyplot as plt
@@ -40,3 +41,27 @@ except ImportError:
     from numpy.lib.stride_tricks import as_strided
 
     print("cupy not installed. Using numpy.")
+
+import numpy as np
+import sys
+import os 
+import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
+from scipy.optimize import basinhopping, minimize
+
+import matplotlib.patches as patches
+from matplotlib.pyplot import cm
+
+# from aodfunctions.dependencies import *
+# from aodfunctions.general import *
+# from aodfunctions.testbed import *
+# from aodfunctions.settings import *
+
+from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
+
+import ipyparallel as ipp
+from scipy.special import binom, hyp2f1
+from scipy.ndimage import zoom
+
+
+
