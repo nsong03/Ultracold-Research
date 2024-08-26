@@ -1462,6 +1462,38 @@ def opt_forces_Legendre(fittedwaveform, desiredpositions, desiredacceleration, f
 
 # Further analysis code:
 
+def analyze_waveform(AWGwaveform, temperature, globalvariables, oop_variables, numsteps = 5000):
+    aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
+    numzframes, zstart, frame_zspacing, frame_size, frameheight_real = oop_variables
+    
+
+    waveform_forces = retrieve_oop_forces(AWGwaveform, numzframes, zstart, frame_zspacing, frameheight_real, frame_size, globalvariables, timeperframe)
+    framespacing = len(waveform_forces) // numframes
+    
+    initdistribution = initdistribution_MaxwellBoltzmann3D(num_particles, temperature, 0, zstart, frame_zspacing, frame_size, globalvariables)
+    p_out, dp_out, ddp_out, atommoveframes = montecarlo_oop_2D(waveform_forces, initdistribution, atommass, frame_size, frame_zspacing, globalvariables, numframes)
+
+    frame_xspacing = (frame_size[0] * 2 + cp.abs(startlocation - endlocation)) / numpix_frame # in units of meters / FRAME pixel
+    finalposition_x = (frame_size[0]  + cp.abs(startlocation - endlocation)) / frame_xspacing # In units of FRAME pixels
+    finalposition_z = (focallength - zstart) / frame_zspacing
+    finalposition = [finalposition_x, finalposition_z]
+    
+    
+    calibration_potential = snapshots_oop_potential(AWGwaveform[-numpix_frame:], 1, numzframes, zstart, frame_zspacing, 
+                                                    frameheight_real, frame_size, globalvariables)
+    tweezerwidths = fit_gaussian_2d(tonumpy(calibration_potential))
+    percentagelive = analyze_survivalprobability_oop_2D(p_out, finalposition, tweezerwidths, globalvariables)
+                    
+    
+    # Store the result in the results array
+    results_final = [percentagelive,tonumpy(p_out),tonumpy(dp_out)]
+    movementframes = atommoveframes
+    forcesframes = cp.array([waveform_forces[iter] for iter in range(len(waveform_forces)) if iter % framespacing == 0])
+
+    return results_final, movementframes, forcesframes
+
+
+
 def analyze_waveformsurvival(AWGwaveform, temperature, globalvariables, oop_variables, timeperframe, numframes=10):
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
     numzframes, zstart, frame_zspacing, frame_size, frameheight_real = oop_variables
@@ -1491,6 +1523,8 @@ def analyze_waveformsurvival(AWGwaveform, temperature, globalvariables, oop_vari
     forcesframes = cp.array([waveform_forces[iter] for iter in range(len(waveform_forces)) if iter % framespacing == 0])
 
     return results_final, movementframes, forcesframes
+
+
 
 def get_potentialframes_oop(AWGwaveform, temperature, globalvariables, oop_variables, timeperframe, numframes=10):
     aodaperture, soundvelocity, cycletime, focallength, wavelength, numpix_frame, numpix_real, pixelsize_real, aperturesize_real, aperturesize_fourier, pixelsize_fourier, movementtime, timestep, startlocation, endlocation, num_particles, atommass, tweezerdepth, hbar, optimizationbasisfunctions, numcoefficients = globalvariables
