@@ -61,6 +61,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExec
 import ipyparallel as ipp
 from scipy.special import binom, hyp2f1
 from scipy.ndimage import zoom
-
+from scipy.ndimage import gaussian_filter
+from skimage.feature import peak_local_max
 
 
