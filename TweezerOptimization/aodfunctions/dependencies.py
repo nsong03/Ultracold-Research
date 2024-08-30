@@ -63,5 +63,6 @@ from scipy.special import binom, hyp2f1
 from scipy.ndimage import zoom
 from scipy.ndimage import gaussian_filter
 from skimage.feature import peak_local_max
-
-
+from scipy.integrate import simps
+from scipy.integrate import cumtrapz
+from numpy import gradient

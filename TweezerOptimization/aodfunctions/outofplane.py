@@ -45,6 +45,106 @@ def forward_focal_waist(radius,focal_length,wavelength):
 
 
 
+def calculate_integralsum(x_values, y_values):
+    """
+    Calculate the integral of y with respect to x using Simpson's rule.
+
+    Parameters:
+    x_values (array-like): Array of x values.
+    y_values (array-like): Array of y values corresponding to x values.
+
+    Returns:
+    float: The calculated integral.
+    """
+    integral = simps(y_values, x_values)
+    return integral
+
+def calculate_integral_array(x_values, y_values):
+    """
+    Calculate the cumulative integral of y with respect to x, returning an array.
+
+    Parameters:
+    x_values (array-like): Array of x values.
+    y_values (array-like): Array of y values corresponding to x values.
+
+    Returns:
+    array: The cumulative integral array.
+    """
+    integral_array = cumtrapz(y_values, x_values, initial=0)
+    return integral_array
+
+def calculate_derivative_array(x_values, y_values):
+    """
+    Calculate the derivative of y with respect to x, returning an array.
+
+    Parameters:
+    x_values (array-like): Array of x values.
+    y_values (array-like): Array of y values corresponding to x values.
+
+    Returns:
+    array: The derivative array.
+    """
+    derivative_array = gradient(y_values, x_values, edge_order=2)
+    return derivative_array
+
+def bernstein(x, A, B):
+    return A * x * (1 - x) ** B
+
+def scaledistance(xrange, velocitycurve, D):    
+    # Initial guess for A and scaling to fit the constraint
+    A_optimal = D / calculate_integralsum(xrange, velocitycurve)
+    
+    return A_optimal
+
+def calculate_curve_and_symmetrize(x_range, A, B):
+    y_values = bernstein(x_range, A, B)
+    y_neg_flipped = -np.flip(y_values)
+    y_combined = np.concatenate([y_values, y_neg_flipped])
+    x_combined = np.linspace(0, 2 * len(y_values) / len(x_range) * (x_range[-1] - x_range[0]), len(y_combined))
+    return x_combined, y_combined
+
+def calculate_derivatives_and_integrals(y_values, x_values, n, m):
+    derivatives = []
+    integrals = []
+    yintcopy = y_values + 0
+    for i in range(1, n + 1):
+        deriv = calculate_derivative_array(x_values, y_values)
+        derivatives.append(deriv)
+        y_values = deriv
+    
+    for i in range(1, m + 1):
+        integ = calculate_integral_array(x_values, yintcopy)
+        integrals.append(integ)
+        yintcopy = integ
+    
+    return derivatives, integrals
+
+def plot_curves_separately(x_values, y_values, derivatives, integrals, n, m):
+    fig, axes = plt.subplots(n + m + 1, 1, figsize=(10, 6 + 3*(n + m)), sharex=True)
+    
+    axes[0].plot(x_values, y_values, color='blue')
+    axes[0].set_ylabel("Acceleration (m/s^2)")
+    axes[0].set_title("Original Curve (Acceleration)")
+    axes[0].grid(True)
+    
+    for i, deriv in enumerate(derivatives, 1):
+        ylabel = f"{i}th Deriv"
+        axes[i].plot(x_values, deriv, linestyle='--')
+        axes[i].set_ylabel(ylabel)
+        axes[i].set_title(f"{i}th Derivative")
+        axes[i].grid(True)
+    
+    for i, integ in enumerate(integrals, 1):
+        ylabel = f"{i}th Integ"
+        axes[n + i].plot(x_values, integ, linestyle='-.')
+        axes[n + i].set_ylabel(ylabel)
+        axes[n + i].set_title(f"{i}th Integral")
+        axes[n + i].grid(True)
+        
+    axes[-1].set_xlabel("Time (s)")
+    plt.tight_layout()
+    plt.show()
+
 
 
 
